@@ -48,18 +48,29 @@ final class NewCommand {
             write(root.resolve("db/init.sql"), Templates.initSql());
         }
         write(root.resolve(packageDir).resolve("Application.java"), Templates.application(basePackage, db));
+
+        Path featureDir = packageDir.resolve("greeting");
+        write(root.resolve(featureDir).resolve("GreetingRepository.java"), Templates.greetingRepository(basePackage));
+        write(root.resolve(featureDir).resolve("InMemoryGreetingRepository.java"), Templates.inMemoryGreetingRepository(basePackage));
+        if (!"none".equals(db)) {
+            write(root.resolve(featureDir).resolve("JdbcGreetingRepository.java"), Templates.jdbcGreetingRepository(basePackage));
+        }
+        write(root.resolve(featureDir).resolve("GreetingService.java"), Templates.greetingService(basePackage));
+        write(root.resolve(featureDir).resolve("DefaultGreetingService.java"), Templates.defaultGreetingService(basePackage));
+        write(root.resolve(featureDir).resolve("GreetingController.java"), Templates.greetingController(basePackage));
+
         write(root.resolve(testPackageDir).resolve("ApplicationTest.java"), Templates.applicationTest(basePackage));
 
         System.out.println("""
-            Created project '%s' (db: %s)
+            Created project '%s' (db: %s) — layered: controller -> service -> repository
 
             Next steps:
               cd %s
-              gradle run                # start on http://localhost:8080
-              gradle test               # run the end-to-end test
+              gradle run                # app on http://localhost:8080, devtools on /ligero/dev
+              gradle test               # end-to-end test with the in-memory repository
               docker compose up --build # containerized app%s
             """.formatted(name, db, name,
-                "postgres".equals(db) ? " + PostgreSQL (try /db/greetings)" : ""));
+                "postgres".equals(db) ? " + PostgreSQL (try /api/greetings)" : ""));
         return 0;
     }
 

@@ -26,7 +26,15 @@ class LigeroCliTest {
             .contains("mainClass = 'com.acme.api.Application'");
         assertThat(Files.readString(root.resolve("src/main/java/com/acme/api/Application.java")))
             .contains("package com.acme.api;")
-            .contains("Ligero.create(8080)");
+            .contains("Ligero.create(8080)")
+            .contains("Beans.builder()")
+            .contains("devtools.install(app, beans)");
+        assertThat(root.resolve("src/main/java/com/acme/api/greeting/GreetingRepository.java")).exists();
+        assertThat(root.resolve("src/main/java/com/acme/api/greeting/InMemoryGreetingRepository.java")).exists();
+        assertThat(root.resolve("src/main/java/com/acme/api/greeting/GreetingService.java")).exists();
+        assertThat(root.resolve("src/main/java/com/acme/api/greeting/DefaultGreetingService.java")).exists();
+        assertThat(Files.readString(root.resolve("src/main/java/com/acme/api/greeting/GreetingController.java")))
+            .contains("@Controller");
         assertThat(root.resolve("src/test/java/com/acme/api/ApplicationTest.java")).exists();
     }
 
@@ -49,7 +57,9 @@ class LigeroCliTest {
         assertThat(Files.readString(root.resolve("db/init.sql"))).contains("greetings");
         assertThat(Files.readString(root.resolve("build.gradle"))).contains("org.postgresql:postgresql");
         assertThat(Files.readString(root.resolve("src/main/java/com/acme/pg/Application.java")))
-            .contains("PGSimpleDataSource").contains("/db/greetings").contains("HealthMiddleware");
+            .contains("PGSimpleDataSource").contains("HealthMiddleware")
+            .contains("JdbcGreetingRepository");
+        assertThat(root.resolve("src/main/java/com/acme/pg/greeting/JdbcGreetingRepository.java")).exists();
     }
 
     @Test
