@@ -16,6 +16,13 @@ final class NewCommand {
         if (!name.matches("[a-zA-Z][a-zA-Z0-9_-]*")) {
             throw new IllegalArgumentException("Invalid project name: " + name);
         }
+        String db = LigeroCli.option(args, "--db");
+        if (db == null) {
+            db = "none";
+        }
+        if (!java.util.Set.of("none", "postgres", "h2").contains(db)) {
+            throw new IllegalArgumentException("--db must be one of: none, postgres, h2");
+        }
         String basePackage = LigeroCli.option(args, "--package");
         if (basePackage == null) {
             basePackage = "com.example." + name.toLowerCase().replaceAll("[^a-z0-9]", "");
@@ -32,20 +39,27 @@ final class NewCommand {
         Path testPackageDir = Path.of("src/test/java", basePackage.split("\\."));
 
         write(root.resolve("settings.gradle"), Templates.settingsGradle(name));
-        write(root.resolve("build.gradle"), Templates.buildGradle(basePackage));
+        write(root.resolve("build.gradle"), Templates.buildGradle(basePackage, db));
         write(root.resolve(".gitignore"), Templates.gitignore());
-        write(root.resolve("README.md"), Templates.projectReadme(name));
-        write(root.resolve(packageDir).resolve("Application.java"), Templates.application(basePackage));
+        write(root.resolve("README.md"), Templates.projectReadme(name, db));
+        write(root.resolve("Dockerfile"), Templates.dockerfile(name));
+        write(root.resolve("docker-compose.yml"), Templates.dockerCompose(name, db));
+        if ("postgres".equals(db)) {
+            write(root.resolve("db/init.sql"), Templates.initSql());
+        }
+        write(root.resolve(packageDir).resolve("Application.java"), Templates.application(basePackage, db));
         write(root.resolve(testPackageDir).resolve("ApplicationTest.java"), Templates.applicationTest(basePackage));
 
         System.out.println("""
-            Created project '%s'
+            Created project '%s' (db: %s)
 
             Next steps:
               cd %s
-              gradle run          # start on http://localhost:8080
-              gradle test         # run the end-to-end test
-            """.formatted(name, name));
+              gradle run                # start on http://localhost:8080
+              gradle test               # run the end-to-end test
+              docker compose up --build # containerized app%s
+            """.formatted(name, db, name,
+                "postgres".equals(db) ? " + PostgreSQL (try /db/greetings)" : ""));
         return 0;
     }
 

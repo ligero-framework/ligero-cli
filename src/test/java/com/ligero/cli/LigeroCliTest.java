@@ -31,6 +31,42 @@ class LigeroCliTest {
     }
 
     @Test
+    void newGeneratesDockerAssets() throws IOException {
+        LigeroCli.run(dir, "new", "dockered", "--package", "com.acme.d");
+        Path root = dir.resolve("dockered");
+        assertThat(Files.readString(root.resolve("Dockerfile")))
+            .contains("gradle installDist").contains("bin/dockered");
+        assertThat(Files.readString(root.resolve("docker-compose.yml")))
+            .contains("build: .").doesNotContain("postgres");
+    }
+
+    @Test
+    void newWithPostgresWiresComposeDbAndCode() throws IOException {
+        LigeroCli.run(dir, "new", "pgapp", "--package", "com.acme.pg", "--db", "postgres");
+        Path root = dir.resolve("pgapp");
+        assertThat(Files.readString(root.resolve("docker-compose.yml")))
+            .contains("postgres:16-alpine").contains("init.sql").contains("service_healthy");
+        assertThat(Files.readString(root.resolve("db/init.sql"))).contains("greetings");
+        assertThat(Files.readString(root.resolve("build.gradle"))).contains("org.postgresql:postgresql");
+        assertThat(Files.readString(root.resolve("src/main/java/com/acme/pg/Application.java")))
+            .contains("PGSimpleDataSource").contains("/db/greetings").contains("HealthMiddleware");
+    }
+
+    @Test
+    void newWithH2WiresInMemoryDb() throws IOException {
+        LigeroCli.run(dir, "new", "h2app", "--package", "com.acme.h2app", "--db", "h2");
+        Path root = dir.resolve("h2app");
+        assertThat(Files.readString(root.resolve("build.gradle"))).contains("com.h2database:h2");
+        assertThat(Files.readString(root.resolve("src/main/java/com/acme/h2app/Application.java")))
+            .contains("jdbc:h2:mem:app").contains("initSchema");
+    }
+
+    @Test
+    void newRejectsUnknownDb() {
+        assertThat(LigeroCli.run(dir, "new", "bad", "--db", "oracle")).isEqualTo(1);
+    }
+
+    @Test
     void newDefaultsPackageFromName() throws IOException {
         assertThat(LigeroCli.run(dir, "new", "shop")).isZero();
         assertThat(dir.resolve("shop/src/main/java/com/example/shop/Application.java")).exists();
