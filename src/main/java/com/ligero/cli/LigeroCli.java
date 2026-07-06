@@ -63,8 +63,12 @@ public final class LigeroCli {
             Ligero CLI — scaffolding for the Ligero web framework
 
             Usage:
-              ligero new <project-name> [--package <base.package>] [--db none|h2|postgres]
+              ligero new <project-name> [--package <base.package>] [--db none|h2|postgres] [--wiring explicit|processor]
               ligero generate <kind> <Name> [--module <Name>]
+
+            Wiring (ligero new):
+              explicit   (default) hand-written modules with bind(...); `ligero generate` weaves into them
+              processor  annotate classes; ligero-processor generates the bind(...) at compile time
               ligero version
               ligero help
 

@@ -18,12 +18,17 @@ final class Templates {
         return "rootProject.name = '" + name + "'\n";
     }
 
-    static String buildGradle(String basePackage, String db) {
+    static String buildGradle(String basePackage, String db, boolean processor) {
         String dbDependency = switch (db) {
             case "postgres" -> "    implementation 'org.postgresql:postgresql:42.7.4'\n";
             case "h2" -> "    implementation 'com.h2database:h2:2.3.232'\n";
             default -> "";
         };
+        // Opt-in compile-time DI: generates the explicit bind() wiring from your
+        // annotated classes. Remove this line to hand-write the wiring instead.
+        String processorDependency = processor
+            ? "    annotationProcessor 'com.ligero:ligero-processor:" + LIGERO_VERSION + "'\n"
+            : "";
         return """
             plugins {
                 id 'application'
@@ -47,7 +52,7 @@ final class Templates {
                 implementation 'com.ligero:ligero-core:%s'
                 // Visual debugger at /ligero/dev — development only, drop it for production builds.
                 implementation 'com.ligero:ligero-devtools:%s'
-                runtimeOnly 'com.ligero:ligero-server-jdk:%s'
+            %s    runtimeOnly 'com.ligero:ligero-server-jdk:%s'
                 runtimeOnly 'com.ligero:ligero-json:%s'
                 runtimeOnly 'org.slf4j:slf4j-simple:2.0.16'
 
@@ -59,8 +64,8 @@ final class Templates {
             test {
                 useJUnitPlatform()
             }
-            """.formatted(basePackage, LIGERO_VERSION, LIGERO_VERSION, LIGERO_VERSION,
-                LIGERO_VERSION, LIGERO_VERSION, dbDependency);
+            """.formatted(basePackage, LIGERO_VERSION, LIGERO_VERSION, processorDependency,
+                LIGERO_VERSION, LIGERO_VERSION, LIGERO_VERSION, dbDependency);
     }
 
     static String gitignore() {
@@ -73,7 +78,34 @@ final class Templates {
             """;
     }
 
-    static String projectReadme(String name, String db) {
+    static String projectReadme(String name, String db, boolean processor) {
+        String wiringSection = processor
+            ? """
+
+                ## Wiring: compile-time processor
+
+                This project uses `ligero-processor`. You **annotate** your classes
+                (`@Service`, `@Repository`, `@Controller`) and the processor generates
+                the explicit `bind(...)` wiring at compile time into
+                `GeneratedModules.all()` — no module to edit, and still zero runtime
+                reflection. Add a feature by writing an annotated class; provide
+                third-party beans (a `DataSource`) with a `@Provides` static method.
+                Remove the `annotationProcessor` line in `build.gradle` to switch back
+                to hand-written modules.
+                """
+            : """
+
+                ## Wiring: explicit modules
+
+                `Application` lists modules; a `GreetingModule` owns the greeting
+                slice (its `bind(...)` calls and routes). Use `ligero generate` to add
+                more — each generator writes the file and wires it into its module.
+                Prefer annotations? Regenerate with `--wiring=processor`.
+                """;
+        return projectReadmeBody(name, db) + wiringSection;
+    }
+
+    private static String projectReadmeBody(String name, String db) {
         String dbSection = switch (db) {
             case "postgres" -> """
 
@@ -188,6 +220,114 @@ final class Templates {
                 }
             }
             """.formatted(basePackage, basePackage);
+    }
+
+    static String applicationProcessor(String basePackage, String db) {
+        boolean hasDb = !"none".equals(db);
+        String dbImports = hasDb ? """
+
+            import com.ligero.middleware.HealthMiddleware;
+            import javax.sql.DataSource;
+            import java.sql.Connection;
+            """ : "";
+        String health = hasDb ? """
+
+                    app.use(HealthMiddleware.builder()
+                        .check("db", () -> isDbUp(beans.get(DataSource.class)))
+                        .build());
+            """ : "";
+        String isDbUp = hasDb ? """
+
+                private static boolean isDbUp(DataSource dataSource) {
+                    try (Connection c = dataSource.getConnection()) {
+                        return c.isValid(1);
+                    } catch (Exception e) {
+                        return false;
+                    }
+                }
+            """ : "";
+        return """
+            package %s;
+
+            import com.ligero.Ligero;
+            import com.ligero.Modules;
+            import com.ligero.beans.Beans;
+            import com.ligero.devtools.Devtools;
+            import com.ligero.generated.GeneratedModules;
+            import com.ligero.middleware.RequestLoggingMiddleware;
+            %s
+            public class Application {
+
+                public static void main(String[] args) throws Exception {
+                    Ligero app = create();
+                    app.start();
+                    Runtime.getRuntime().addShutdownHook(new Thread(app::stop));
+                    System.out.println("Running at  http://localhost:" + app.port());
+                    System.out.println("Devtools at http://localhost:" + app.port() + "/ligero/dev");
+                }
+
+                /** No wiring here: GeneratedModules is written by ligero-processor from your annotations. */
+                public static Ligero create() {
+                    Ligero app = Ligero.create(8080);
+                    app.use(new RequestLoggingMiddleware());
+
+                    Devtools devtools = Devtools.create();
+                    Beans beans = Modules.install(app, devtools.recorder(), GeneratedModules.all());
+                    devtools.install(app, beans);
+            %s
+                    return app;
+                }
+            %s}
+            """.formatted(basePackage, dbImports, health, isDbUp);
+    }
+
+    static String greetingConfigProvides(String basePackage, String db) {
+        String body = switch (db) {
+            case "postgres" -> """
+
+                    @Provides
+                    static DataSource dataSource() {
+                        var ds = new org.postgresql.ds.PGSimpleDataSource();
+                        ds.setUrl(env("DB_URL", "jdbc:postgresql://localhost:5432/app"));
+                        ds.setUser(env("DB_USER", "app"));
+                        ds.setPassword(env("DB_PASSWORD", "app"));
+                        return ds;
+                    }
+
+                    private static String env(String key, String fallback) {
+                        String value = System.getenv(key);
+                        return value == null || value.isBlank() ? fallback : value;
+                    }
+            """;
+            case "h2" -> """
+
+                    @Provides
+                    static DataSource dataSource() {
+                        var ds = new org.h2.jdbcx.JdbcDataSource();
+                        ds.setURL("jdbc:h2:mem:app;DB_CLOSE_DELAY=-1");
+                        try (var c = ds.getConnection(); var s = c.createStatement()) {
+                            s.execute("CREATE TABLE IF NOT EXISTS greetings("
+                                + "id INT AUTO_INCREMENT PRIMARY KEY, message VARCHAR(200))");
+                            s.execute("INSERT INTO greetings(message) VALUES ('Hola desde H2'), ('Hello from H2')");
+                        } catch (Exception e) {
+                            throw new IllegalStateException("Could not init schema", e);
+                        }
+                        return ds;
+                    }
+            """;
+            default -> "";
+        };
+        return """
+            package %s.greeting;
+
+            import com.ligero.beans.Provides;
+
+            import javax.sql.DataSource;
+
+            /** Supplies the DataSource bean to the processor via a @Provides factory. */
+            public final class GreetingConfig {
+            %s}
+            """.formatted(basePackage, body);
     }
 
     static String applicationTest(String basePackage) {

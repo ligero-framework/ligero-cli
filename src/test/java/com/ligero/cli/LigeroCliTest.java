@@ -86,6 +86,41 @@ class LigeroCliTest {
     }
 
     @Test
+    void newWithProcessorWiringHasNoHandModuleAndUsesGeneratedModules() throws IOException {
+        assertThat(LigeroCli.run(dir, "new", "proc", "--package", "com.acme.proc", "--wiring", "processor"))
+            .isZero();
+        Path root = dir.resolve("proc");
+        Path greeting = root.resolve("src/main/java/com/acme/proc/greeting");
+        // annotated layer classes, but NO hand-written module and no bind() calls
+        assertThat(greeting.resolve("GreetingModule.java")).doesNotExist();
+        assertThat(Files.readString(greeting.resolve("DefaultGreetingService.java"))).contains("@Service");
+        assertThat(Files.readString(greeting.resolve("GreetingController.java"))).contains("@Controller");
+        assertThat(Files.readString(root.resolve("build.gradle")))
+            .contains("annotationProcessor 'com.ligero:ligero-processor");
+        assertThat(Files.readString(root.resolve("src/main/java/com/acme/proc/Application.java")))
+            .contains("import com.ligero.generated.GeneratedModules;")
+            .contains("Modules.install(app, devtools.recorder(), GeneratedModules.all())")
+            .doesNotContain("bind(");
+    }
+
+    @Test
+    void newWithProcessorAndH2ProvidesDataSource() throws IOException {
+        assertThat(LigeroCli.run(dir, "new", "procdb", "--package", "com.acme.pd",
+            "--wiring", "processor", "--db", "h2")).isZero();
+        Path greeting = dir.resolve("procdb/src/main/java/com/acme/pd/greeting");
+        assertThat(Files.readString(greeting.resolve("GreetingConfig.java")))
+            .contains("@Provides").contains("DataSource").contains("jdbc:h2:mem:app");
+        assertThat(greeting.resolve("JdbcGreetingRepository.java")).exists();
+        // only one repository impl is annotated, so no duplicate binding is generated
+        assertThat(greeting.resolve("InMemoryGreetingRepository.java")).doesNotExist();
+    }
+
+    @Test
+    void newRejectsUnknownWiring() {
+        assertThat(LigeroCli.run(dir, "new", "bad", "--wiring", "magic")).isEqualTo(1);
+    }
+
+    @Test
     void newDefaultsPackageFromName() throws IOException {
         assertThat(LigeroCli.run(dir, "new", "shop")).isZero();
         assertThat(dir.resolve("shop/src/main/java/com/example/shop/Application.java")).exists();
