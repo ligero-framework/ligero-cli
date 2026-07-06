@@ -63,14 +63,23 @@ public final class LigeroCli {
             Ligero CLI — scaffolding for the Ligero web framework
 
             Usage:
-              ligero new <project-name> [--package <base.package>]
-              ligero generate controller <Name> [--package <base.package>]
+              ligero new <project-name> [--package <base.package>] [--db none|h2|postgres]
+              ligero generate <kind> <Name> [--module <Name>]
               ligero version
               ligero help
 
+            Generators (each writes the file AND auto-registers it in its module):
+              module <Name>       an empty feature module (registered in Application)
+              repository <Name>   interface + in-memory impl, bound in the module
+              service <Name>      interface + default impl (injects the repository if present)
+              controller <Name>   a controller with a route, bound in the module
+              resource <Name>     a whole CRUD slice: module + repository + service + controller
+
             Examples:
-              ligero new my-api --package com.acme.api
-              ligero generate controller User
+              ligero new my-api --package com.acme.api --db h2
+              ligero generate resource Order
+              ligero generate module Billing
+              ligero generate service Invoice --module Billing
             """;
     }
 

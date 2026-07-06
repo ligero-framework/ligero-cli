@@ -1,12 +1,18 @@
 package com.ligero.cli;
 
-/** Code templates emitted by the scaffolder. */
+/**
+ * Code templates emitted by the scaffolder. Generated files carry
+ * {@code // ligero-cli:*} anchors so {@code ligero generate} can weave new
+ * artifacts in (see {@link SourceEditor}).
+ */
 final class Templates {
 
     private Templates() {
     }
 
     static final String LIGERO_VERSION = "0.2.0-SNAPSHOT";
+
+    // ---------------------------------------------------------------- project
 
     static String settingsGradle(String name) {
         return "rootProject.name = '" + name + "'\n";
@@ -75,8 +81,6 @@ final class Templates {
 
                 `docker compose up` starts PostgreSQL alongside the app
                 (schema + sample data from `db/init.sql`). Try `GET /api/greetings`.
-                Locally without Docker, point `DB_URL`/`DB_USER`/`DB_PASSWORD`
-                at your own instance.
                 """;
             case "h2" -> """
 
@@ -90,60 +94,183 @@ final class Templates {
         return """
             # %s
 
-            A [Ligero](https://github.com/ligero-framework/ligero) application.
+            A modular [Ligero](https://github.com/ligero-framework/ligero) application.
 
             ```bash
-            gradle run                 # http://localhost:8080
+            gradle run                 # http://localhost:8080  (devtools at /ligero/dev)
             gradle test
-            docker compose up --build # containerized
+            docker compose up --build  # containerized
             ```
 
-            ## Layers
+            ## Architecture
 
-            The app is wired layer by layer in `Application.wire(...)` — the
-            composition root — using Ligero's `Beans` container (plain lambdas,
-            checked by the compiler, validated at startup):
+            The app is organized into **feature modules**. Each module owns one
+            slice of the app — its controller, service and repository — and
+            declares its own wiring, so `Application` never touches dependency
+            injection: it just lists modules.
 
             ```
-            greeting/GreetingController   @Controller  routes -> service
-            greeting/GreetingService      (interface)  business logic
-            greeting/GreetingRepository   (interface)  data access
+            greeting/
+              GreetingModule.java          declares the slice's beans + routes
+              GreetingController.java       @Controller  — HTTP -> service
+              GreetingService.java          interface    — business layer
+              DefaultGreetingService.java   @Service
+              GreetingRepository.java       interface    — data access
+              InMemoryGreetingRepository.java  @Repository
             ```
 
-            Repositories and services are bound **as interfaces**, so tests swap
-            them (see `ApplicationTest`) and devtools can trace calls through them.
+            ## Generators (auto-registered, like Angular's CLI)
+
+            ```bash
+            ligero generate module Orders            # new feature module (registered in Application)
+            ligero generate repository Order         # + binding in the module
+            ligero generate service Order            # + binding (injects the repository if present)
+            ligero generate controller Order         # + binding and route
+            ligero generate resource Order           # a whole CRUD slice at once
+            ```
+
+            Each generator writes the file **and** wires it into its module for you.
 
             ## Devtools
 
-            While the app runs, open **http://localhost:8080/ligero/dev** to see
-            the bean dependency graph and a live trace of every request through
-            the layers (arguments, results, timing per call). Development only —
-            remove the `ligero-devtools` dependency for production builds, or set
-            `LIGERO_DEVTOOLS=false`.
+            While the app runs, open **http://localhost:8080/ligero/dev**: the bean
+            dependency graph and a live trace of every request through the layers
+            (arguments, results, timing). Development only — remove `ligero-devtools`
+            or set `LIGERO_DEVTOOLS=false` for production.
             %s""".formatted(name, dbSection);
     }
 
-    static String application(String basePackage, String db) {
-        boolean hasDb = !"none".equals(db);
-        String repoImport = hasDb ? "JdbcGreetingRepository" : "InMemoryGreetingRepository";
-        String dbImports = hasDb ? """
+    // ------------------------------------------------------------ application
 
+    static String application(String basePackage, String db) {
+        return """
+            package %s;
+
+            import %s.greeting.GreetingModule;
+            // ligero-cli:imports
+
+            import com.ligero.Ligero;
+            import com.ligero.LigeroModule;
+            import com.ligero.Modules;
+            import com.ligero.beans.Beans;
+            import com.ligero.devtools.Devtools;
+            import com.ligero.middleware.RequestLoggingMiddleware;
+
+            public class Application {
+
+                public static void main(String[] args) throws Exception {
+                    Ligero app = create();
+                    app.start();
+                    Runtime.getRuntime().addShutdownHook(new Thread(app::stop));
+                    System.out.println("Running at  http://localhost:" + app.port());
+                    System.out.println("Devtools at http://localhost:" + app.port() + "/ligero/dev");
+                }
+
+                /** Assembles the app from its modules — no wiring here, that lives in the modules. */
+                public static Ligero create() {
+                    Ligero app = Ligero.create(8080);
+                    app.use(new RequestLoggingMiddleware());
+
+                    // Visual debugger at /ligero/dev (set LIGERO_DEVTOOLS=false to disable).
+                    Devtools devtools = Devtools.create();
+                    Beans beans = Modules.install(app, devtools.recorder(), modules());
+                    devtools.install(app, beans);
+
+                    return app;
+                }
+
+                /** The application's modules. `ligero generate module <Name>` adds one here. */
+                static LigeroModule[] modules() {
+                    return new LigeroModule[] {
+                        new GreetingModule(),
+                        // ligero-cli:modules
+                    };
+                }
+            }
+            """.formatted(basePackage, basePackage);
+    }
+
+    static String applicationTest(String basePackage) {
+        return """
+            package %s;
+
+            import com.ligero.test.LigeroTest;
+
+            import org.junit.jupiter.api.Test;
+
+            import static org.junit.jupiter.api.Assertions.assertEquals;
+            import static org.junit.jupiter.api.Assertions.assertTrue;
+
+            class ApplicationTest {
+
+                @Test
+                void greetingFlowsThroughTheLayers() {
+                    try (LigeroTest test = LigeroTest.start(Application.create())) {
+                        LigeroTest.TestResponse hello = test.get("/hello/world").execute();
+                        assertEquals(200, hello.status());
+                        assertTrue(hello.body().contains("world"));
+
+                        LigeroTest.TestResponse list = test.get("/api/greetings").execute();
+                        assertEquals(200, list.status());
+                    }
+                }
+            }
+            """.formatted(basePackage);
+    }
+
+    // --------------------------------------------------- greeting module (new)
+
+    static String greetingModule(String basePackage, String db) {
+        boolean hasDb = !"none".equals(db);
+        String pkg = basePackage + ".greeting";
+        String repoImpl = hasDb ? "JdbcGreetingRepository" : "InMemoryGreetingRepository";
+        String repoArg = hasDb ? "b.get(javax.sql.DataSource.class)" : "";
+        String dbImports = hasDb ? """
             import com.ligero.middleware.HealthMiddleware;
             import javax.sql.DataSource;
             import java.sql.Connection;
             """ : "";
-        String health = hasDb ? """
-
-                    app.use(HealthMiddleware.builder()
-                        .check("db", () -> isDbUp(beans.get(DataSource.class)))
-                        .build());
-            """ : "";
-        String repoBindings = hasDb
-            ? "            .bind(DataSource.class,          b -> dataSource())\n"
-              + "            .bind(GreetingRepository.class,  b -> new JdbcGreetingRepository(b.get(DataSource.class)))"
-            : "            .bind(GreetingRepository.class,  b -> new InMemoryGreetingRepository())";
+        String dbBeanBinding = hasDb
+            ? "        builder.bind(DataSource.class,          b -> dataSource());\n"
+            : "";
+        String healthRoute = hasDb
+            ? "        app.use(HealthMiddleware.builder()\n"
+              + "            .check(\"db\", () -> isDbUp(beans.get(DataSource.class)))\n"
+              + "            .build());\n"
+            : "";
         String dbHelpers = switch (db) {
-            case "postgres" -> """
+            case "postgres" -> POSTGRES_DATASOURCE + IS_DB_UP;
+            case "h2" -> H2_DATASOURCE + IS_DB_UP;
+            default -> "";
+        };
+        return """
+            package %s;
+
+            import com.ligero.Ligero;
+            import com.ligero.LigeroModule;
+            import com.ligero.beans.Beans;
+            %s
+            /** The "greeting" feature: its beans and routes, wired in one place. */
+            public final class GreetingModule implements LigeroModule {
+
+                @Override
+                public void beans(Beans.Builder builder) {
+            %s        builder.bind(GreetingRepository.class,  b -> new %s(%s));
+                    builder.bind(GreetingService.class,     b -> new DefaultGreetingService(b.get(GreetingRepository.class)));
+                    builder.bind(GreetingController.class,  b -> new GreetingController(b.get(GreetingService.class)));
+                    // ligero-cli:beans
+                }
+
+                @Override
+                public void routes(Ligero app, Beans beans) {
+            %s        beans.get(GreetingController.class).register(app);
+                    // ligero-cli:routes
+                }
+            %s}
+            """.formatted(pkg, dbImports, dbBeanBinding, repoImpl, repoArg, healthRoute, dbHelpers);
+    }
+
+    private static final String POSTGRES_DATASOURCE = """
 
                 private static DataSource dataSource() {
                     var ds = new org.postgresql.ds.PGSimpleDataSource();
@@ -157,8 +284,9 @@ final class Templates {
                     String value = System.getenv(key);
                     return value == null || value.isBlank() ? fallback : value;
                 }
-            """ + IS_DB_UP;
-            case "h2" -> """
+            """;
+
+    private static final String H2_DATASOURCE = """
 
                 private static DataSource dataSource() {
                     var ds = new org.h2.jdbcx.JdbcDataSource();
@@ -177,63 +305,7 @@ final class Templates {
                         throw new IllegalStateException("Could not init schema", e);
                     }
                 }
-            """ + IS_DB_UP;
-            default -> "";
-        };
-        return """
-            package %s;
-
-            import %s.greeting.DefaultGreetingService;
-            import %s.greeting.GreetingController;
-            import %s.greeting.GreetingRepository;
-            import %s.greeting.GreetingService;
-            import %s.greeting.%s;
-
-            import com.ligero.Ligero;
-            import com.ligero.beans.Beans;
-            import com.ligero.devtools.Devtools;
-            import com.ligero.middleware.RequestLoggingMiddleware;
-            %s
-            public class Application {
-
-                public static void main(String[] args) throws Exception {
-                    Ligero app = create();
-                    app.start();
-                    Runtime.getRuntime().addShutdownHook(new Thread(app::stop));
-                    System.out.println("Running at  http://localhost:" + app.port());
-                    System.out.println("Devtools at http://localhost:" + app.port() + "/ligero/dev");
-                }
-
-                /** App wiring, separated from main() so tests can start it on an ephemeral port. */
-                public static Ligero create() {
-                    Ligero app = Ligero.create(8080);
-                    app.use(new RequestLoggingMiddleware());
-
-                    // Visual debugger at /ligero/dev (set LIGERO_DEVTOOLS=false to disable).
-                    Devtools devtools = Devtools.create();
-                    Beans beans = wire(devtools);
-                    app.beans(beans);
-                    devtools.install(app, beans);
-            %s
-                    app.get("/", ctx -> ctx.text("It works!"));
-                    beans.get(GreetingController.class).register(app);
-
-                    return app;
-                }
-
-                /** Composition root: the whole object graph, layer by layer, checked by the compiler. */
-                static Beans wire(Devtools devtools) {
-                    return Beans.builder()
-            %s
-                        .bind(GreetingService.class,     b -> new DefaultGreetingService(b.get(GreetingRepository.class)))
-                        .bind(GreetingController.class,  b -> new GreetingController(b.get(GreetingService.class)))
-                        .instrument(devtools.recorder())
-                        .start();
-                }
-            %s}
-            """.formatted(basePackage, basePackage, basePackage, basePackage, basePackage,
-                basePackage, repoImport, dbImports, health, repoBindings, dbHelpers);
-    }
+            """;
 
     private static final String IS_DB_UP = """
 
@@ -244,7 +316,7 @@ final class Templates {
                         return false;
                     }
                 }
-    """;
+            """;
 
     static String greetingRepository(String basePackage) {
         return """
@@ -252,7 +324,7 @@ final class Templates {
 
             import java.util.List;
 
-            /** Data-access layer. Bound as an interface so implementations swap freely. */
+            /** Data-access layer. An interface so implementations swap freely and devtools can trace it. */
             public interface GreetingRepository {
 
                 List<String> all();
@@ -271,12 +343,10 @@ final class Templates {
             import java.util.List;
             import java.util.concurrent.CopyOnWriteArrayList;
 
-            /** In-memory implementation — used by tests (and by the app when no DB is configured). */
             @Repository
             public class InMemoryGreetingRepository implements GreetingRepository {
 
-                private final List<String> greetings = new CopyOnWriteArrayList<>(
-                    List.of("Hola desde Ligero"));
+                private final List<String> greetings = new CopyOnWriteArrayList<>(List.of("Hola desde Ligero"));
 
                 @Override
                 public List<String> all() {
@@ -305,7 +375,6 @@ final class Templates {
             import java.util.ArrayList;
             import java.util.List;
 
-            /** JDBC implementation backed by the {@code greetings} table. */
             @Repository
             public class JdbcGreetingRepository implements GreetingRepository {
 
@@ -333,8 +402,7 @@ final class Templates {
                 @Override
                 public void add(String message) {
                     try (Connection c = dataSource.getConnection();
-                         PreparedStatement ps = c.prepareStatement(
-                             "INSERT INTO greetings(message) VALUES (?)")) {
+                         PreparedStatement ps = c.prepareStatement("INSERT INTO greetings(message) VALUES (?)")) {
                         ps.setString(1, message);
                         ps.executeUpdate();
                     } catch (Exception e) {
@@ -351,7 +419,7 @@ final class Templates {
 
             import java.util.List;
 
-            /** Business layer. Bound as an interface so devtools can trace calls through it. */
+            /** Business layer. An interface so devtools can trace calls through it. */
             public interface GreetingService {
 
                 String greet(String name);
@@ -421,18 +489,15 @@ final class Templates {
                     this.service = service;
                 }
 
-                /** Attaches this controller's routes to the app. */
                 public void register(Ligero app) {
                     app.get("/hello/{name}", ctx ->
                         ctx.json(Map.of("hello", service.greet(ctx.pathParam("name")))));
 
                     app.group("/api/greetings", api -> {
                         api.get("", ctx -> ctx.json(service.greetings()));
-
                         api.post("", ctx -> {
                             NewGreeting body = ctx.bodyValidator(NewGreeting.class)
-                                .check(g -> g.message() != null && !g.message().isBlank(),
-                                       "message is required")
+                                .check(g -> g.message() != null && !g.message().isBlank(), "message is required")
                                 .get();
                             ctx.status(201).json(Map.of("added", service.add(body.message())));
                         });
@@ -442,51 +507,331 @@ final class Templates {
             """.formatted(basePackage);
     }
 
-    static String applicationTest(String basePackage) {
+    // ------------------------------------------------ generic module (generate)
+
+    static String emptyModule(String packageName, String moduleClass) {
         return """
             package %s;
 
-            import %s.greeting.DefaultGreetingService;
-            import %s.greeting.GreetingController;
-            import %s.greeting.GreetingRepository;
-            import %s.greeting.GreetingService;
-            import %s.greeting.InMemoryGreetingRepository;
-
+            import com.ligero.Ligero;
+            import com.ligero.LigeroModule;
             import com.ligero.beans.Beans;
-            import com.ligero.test.LigeroTest;
 
-            import org.junit.jupiter.api.Test;
+            /** A feature module: declare this slice's beans and routes here. */
+            public final class %s implements LigeroModule {
 
-            import static org.junit.jupiter.api.Assertions.assertEquals;
-            import static org.junit.jupiter.api.Assertions.assertTrue;
+                @Override
+                public void beans(Beans.Builder builder) {
+                    // ligero-cli:beans
+                }
 
-            class ApplicationTest {
-
-                @Test
-                void greetingFlowsThroughTheLayers() {
-                    // Same layered graph as production, with the repository swapped in-memory.
-                    Beans beans = Beans.builder()
-                        .bind(GreetingRepository.class, b -> new InMemoryGreetingRepository())
-                        .bind(GreetingService.class,    b -> new DefaultGreetingService(b.get(GreetingRepository.class)))
-                        .bind(GreetingController.class, b -> new GreetingController(b.get(GreetingService.class)))
-                        .start();
-
-                    try (LigeroTest test = LigeroTest.create(app -> {
-                        app.beans(beans);
-                        beans.get(GreetingController.class).register(app);
-                    })) {
-                        LigeroTest.TestResponse hello = test.get("/hello/world").execute();
-                        assertEquals(200, hello.status());
-                        assertTrue(hello.body().contains("world"));
-
-                        LigeroTest.TestResponse list = test.get("/api/greetings").execute();
-                        assertEquals(200, list.status());
-                        assertTrue(list.body().contains("Hola"));
-                    }
+                @Override
+                public void routes(Ligero app, Beans beans) {
+                    // ligero-cli:routes
                 }
             }
-            """.formatted(basePackage, basePackage, basePackage, basePackage, basePackage, basePackage);
+            """.formatted(packageName, moduleClass);
     }
+
+    // ---------------------------------------------- generic layer skeletons
+
+    static String repositoryInterface(String packageName, String name) {
+        return """
+            package %s;
+
+            import java.util.List;
+
+            /** Data-access layer for %s. Bound as an interface (swappable, traceable). */
+            public interface %sRepository {
+
+                List<String> findAll(); // TODO: replace String with your domain type
+            }
+            """.formatted(packageName, name, name);
+    }
+
+    static String inMemoryRepository(String packageName, String name) {
+        return """
+            package %s;
+
+            import com.ligero.beans.stereotype.Repository;
+
+            import java.util.List;
+            import java.util.concurrent.CopyOnWriteArrayList;
+
+            @Repository
+            public class InMemory%sRepository implements %sRepository {
+
+                private final List<String> items = new CopyOnWriteArrayList<>();
+
+                @Override
+                public List<String> findAll() {
+                    return List.copyOf(items);
+                }
+            }
+            """.formatted(packageName, name, name);
+    }
+
+    static String serviceInterface(String packageName, String name) {
+        return """
+            package %s;
+
+            import java.util.List;
+
+            /** Business layer for %s. Bound as an interface so devtools can trace it. */
+            public interface %sService {
+
+                List<String> list();
+            }
+            """.formatted(packageName, name, name);
+    }
+
+    static String defaultService(String packageName, String name, boolean withRepository) {
+        String field = withRepository
+            ? """
+
+                private final %sRepository repository;
+
+                public Default%sService(%sRepository repository) {
+                    this.repository = repository;
+                }
+            """.formatted(name, name, name)
+            : """
+
+                public Default%sService() {
+                }
+            """.formatted(name);
+        String body = withRepository
+            ? "return repository.findAll();"
+            : "return java.util.List.of(); // TODO: implement";
+        return """
+            package %s;
+
+            import com.ligero.beans.stereotype.Service;
+
+            import java.util.List;
+
+            @Service
+            public class Default%sService implements %sService {
+            %s
+                @Override
+                public List<String> list() {
+                    %s
+                }
+            }
+            """.formatted(packageName, name, name, field, body);
+    }
+
+    static String controllerSkeleton(String packageName, String name) {
+        String var = Names.camel(name);
+        String route = "/api/" + Names.packageSegment(name) + "s";
+        return """
+            package %s;
+
+            import com.ligero.Ligero;
+            import com.ligero.beans.stereotype.Controller;
+
+            /** Web layer for %s: HTTP in, service out. */
+            @Controller
+            public class %sController {
+
+                private final %sService %sService;
+
+                public %sController(%sService %sService) {
+                    this.%sService = %sService;
+                }
+
+                public void register(Ligero app) {
+                    app.get("%s", ctx -> ctx.json(%sService.list()));
+                    // TODO: add POST / PUT / DELETE routes
+                }
+            }
+            """.formatted(packageName, name, name, name, var, name, name, var, var, var, route, var);
+    }
+
+    // ------------------------------------------------------ resource (CRUD)
+
+    static String resourceDomain(String packageName, String name) {
+        return """
+            package %s;
+
+            /** Domain entity for %s. */
+            public record %s(Long id, String name) {
+            }
+            """.formatted(packageName, name, name);
+    }
+
+    static String resourceRepositoryInterface(String packageName, String name) {
+        return """
+            package %s;
+
+            import java.util.List;
+            import java.util.Optional;
+
+            public interface %sRepository {
+
+                List<%s> findAll();
+
+                Optional<%s> findById(long id);
+
+                %s save(%s %s);
+
+                void deleteById(long id);
+            }
+            """.formatted(packageName, name, name, name, name, name, Names.camel(name));
+    }
+
+    static String resourceInMemoryRepository(String packageName, String name) {
+        String var = Names.camel(name);
+        return """
+            package %s;
+
+            import com.ligero.beans.stereotype.Repository;
+
+            import java.util.List;
+            import java.util.Map;
+            import java.util.Optional;
+            import java.util.concurrent.ConcurrentHashMap;
+            import java.util.concurrent.atomic.AtomicLong;
+
+            @Repository
+            public class InMemory%sRepository implements %sRepository {
+
+                private final Map<Long, %s> store = new ConcurrentHashMap<>();
+                private final AtomicLong ids = new AtomicLong();
+
+                @Override
+                public List<%s> findAll() {
+                    return List.copyOf(store.values());
+                }
+
+                @Override
+                public Optional<%s> findById(long id) {
+                    return Optional.ofNullable(store.get(id));
+                }
+
+                @Override
+                public %s save(%s %s) {
+                    long id = %s.id() != null ? %s.id() : ids.incrementAndGet();
+                    %s saved = new %s(id, %s.name());
+                    store.put(id, saved);
+                    return saved;
+                }
+
+                @Override
+                public void deleteById(long id) {
+                    store.remove(id);
+                }
+            }
+            """.formatted(packageName, name, name, name, name, name, name, name, var,
+                var, var, name, name, var);
+    }
+
+    static String resourceServiceInterface(String packageName, String name) {
+        return """
+            package %s;
+
+            import java.util.List;
+
+            public interface %sService {
+
+                List<%s> list();
+
+                %s get(long id);
+
+                %s create(String name);
+
+                void delete(long id);
+            }
+            """.formatted(packageName, name, name, name, name);
+    }
+
+    static String resourceDefaultService(String packageName, String name) {
+        String var = Names.camel(name);
+        return """
+            package %s;
+
+            import com.ligero.beans.stereotype.Service;
+            import com.ligero.http.NotFoundException;
+
+            import java.util.List;
+
+            @Service
+            public class Default%sService implements %sService {
+
+                private final %sRepository repository;
+
+                public Default%sService(%sRepository repository) {
+                    this.repository = repository;
+                }
+
+                @Override
+                public List<%s> list() {
+                    return repository.findAll();
+                }
+
+                @Override
+                public %s get(long id) {
+                    return repository.findById(id)
+                        .orElseThrow(() -> new NotFoundException("%s " + id + " not found"));
+                }
+
+                @Override
+                public %s create(String name) {
+                    return repository.save(new %s(null, name));
+                }
+
+                @Override
+                public void delete(long id) {
+                    get(id); // 404 if absent
+                    repository.deleteById(id);
+                }
+            }
+            """.formatted(packageName, name, name, name, name, name, name, name, name, name, name);
+    }
+
+    static String resourceController(String packageName, String name) {
+        String var = Names.camel(name);
+        String route = "/api/" + Names.packageSegment(name) + "s";
+        return """
+            package %s;
+
+            import com.ligero.Ligero;
+            import com.ligero.beans.stereotype.Controller;
+
+            @Controller
+            public class %sController {
+
+                public record Create%sRequest(String name) {
+                }
+
+                private final %sService service;
+
+                public %sController(%sService service) {
+                    this.service = service;
+                }
+
+                public void register(Ligero app) {
+                    app.group("%s", api -> {
+                        api.get("", ctx -> ctx.json(service.list()));
+                        api.get("/{id}", ctx -> ctx.json(service.get(ctx.pathParamAsLong("id"))));
+                        api.post("", ctx -> {
+                            Create%sRequest body = ctx.bodyValidator(Create%sRequest.class)
+                                .check(r -> r.name() != null && !r.name().isBlank(), "name is required")
+                                .get();
+                            %s created = service.create(body.name());
+                            ctx.status(201).json(created);
+                        });
+                        api.delete("/{id}", ctx -> {
+                            service.delete(ctx.pathParamAsLong("id"));
+                            ctx.status(204).res().end();
+                        });
+                    });
+                }
+            }
+            """.formatted(packageName, name, name, name, name, name, route, name, name, name);
+    }
+
+    // ----------------------------------------------------------- docker etc.
 
     static String dockerfile(String name) {
         return """
@@ -554,63 +899,5 @@ final class Templates {
               ('Hola desde PostgreSQL'),
               ('Hello from PostgreSQL');
             """;
-    }
-
-    static String controller(String basePackage, String name) {
-        String variable = Character.toLowerCase(name.charAt(0)) + name.substring(1);
-        return """
-            package %s;
-
-            import com.ligero.Ligero;
-            import com.ligero.beans.stereotype.Controller;
-            import com.ligero.http.NotFoundException;
-
-            import java.util.List;
-            import java.util.Map;
-            import java.util.concurrent.ConcurrentHashMap;
-            import java.util.concurrent.atomic.AtomicLong;
-
-            /** CRUD controller for %s resources. */
-            @Controller
-            public class %sController {
-
-                public record %s(Long id, String name) {
-                }
-
-                private final Map<Long, %s> store = new ConcurrentHashMap<>();
-                private final AtomicLong ids = new AtomicLong();
-
-                /** Attaches this controller's routes to the app. */
-                public void register(Ligero app) {
-                    app.group("/api/%ss", api -> {
-                        api.get("", ctx -> ctx.json(List.copyOf(store.values())));
-
-                        api.get("/{id}", ctx -> {
-                            %s found = store.get(ctx.pathParamAsLong("id"));
-                            if (found == null) {
-                                throw new NotFoundException("%s not found");
-                            }
-                            ctx.json(found);
-                        });
-
-                        api.post("", ctx -> {
-                            %s body = ctx.bodyValidator(%s.class)
-                                .check(v -> v.name() != null && !v.name().isBlank(), "name is required")
-                                .get();
-                            long id = ids.incrementAndGet();
-                            %s created = new %s(id, body.name());
-                            store.put(id, created);
-                            ctx.status(201).json(created);
-                        });
-
-                        api.delete("/{id}", ctx -> {
-                            store.remove(ctx.pathParamAsLong("id"));
-                            ctx.status(204).res().end();
-                        });
-                    });
-                }
-            }
-            """.formatted(basePackage, name, name, name, name, variable,
-                name, name, name, name, name, name);
     }
 }
