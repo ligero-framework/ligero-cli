@@ -40,6 +40,7 @@ public final class LigeroCli {
                 }
                 case "new" -> new NewCommand().run(workingDir, rest(args));
                 case "generate", "g" -> new GenerateCommand().run(workingDir, rest(args));
+                case "dev" -> new DevCommand().run(workingDir, rest(args));
                 default -> {
                     System.err.println("Unknown command: " + args[0] + "\n\n" + usage());
                     yield 1;
@@ -65,6 +66,7 @@ public final class LigeroCli {
             Usage:
               ligero new <project-name> [--package <base.package>] [--db none|h2|postgres] [--wiring explicit|processor]
               ligero generate <kind> <Name> [--module <Name>]
+              ligero dev                                        (run + restart on file change)
 
             Wiring (ligero new):
               explicit   (default) hand-written modules with bind(...); `ligero generate` weaves into them
