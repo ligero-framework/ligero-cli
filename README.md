@@ -1,7 +1,17 @@
-# Ligero CLI
+<p align="center">
+  <img src="logo.svg" alt="Ligero CLI" width="360">
+</p>
 
-Scaffolding CLI for the [Ligero web framework](https://github.com/ligero-framework/ligero).
-Zero runtime dependencies, Java 21+.
+<p align="center">
+  Scaffolding CLI for the <a href="https://github.com/ligero-framework/ligero">Ligero web framework</a> —
+  generate modular, ready-to-run apps and wire features for you.
+</p>
+
+<p align="center">
+  <em>Zero runtime dependencies · Java 21+</em>
+</p>
+
+---
 
 ## Install
 
