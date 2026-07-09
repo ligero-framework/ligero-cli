@@ -11,6 +11,11 @@
   <em>Zero runtime dependencies · Java 21+</em>
 </p>
 
+<p align="center">
+  <a href="https://ligero-framework.github.io/ligero-docs/">📖 Documentation</a> ·
+  <a href="https://ligero-framework.github.io/ligero-docs/getting-started/cli">CLI guide</a>
+</p>
+
 ---
 
 ## Install
