@@ -10,7 +10,7 @@ final class Templates {
     private Templates() {
     }
 
-    static final String LIGERO_VERSION = "0.2.0-SNAPSHOT";
+    static final String LIGERO_VERSION = "0.5.0";
 
     // ---------------------------------------------------------------- project
 
@@ -27,7 +27,7 @@ final class Templates {
         // Opt-in compile-time DI: generates the explicit bind() wiring from your
         // annotated classes. Remove this line to hand-write the wiring instead.
         String processorDependency = processor
-            ? "    annotationProcessor 'com.ligero:ligero-processor:" + LIGERO_VERSION + "'\n"
+            ? "    annotationProcessor 'com.ligeroframework:ligero-processor:" + LIGERO_VERSION + "'\n"
             : "";
         return """
             plugins {
@@ -49,14 +49,14 @@ final class Templates {
             }
 
             dependencies {
-                implementation 'com.ligero:ligero-core:%s'
+                implementation 'com.ligeroframework:ligero-core:%s'
                 // Visual debugger at /ligero/dev — development only, drop it for production builds.
-                implementation 'com.ligero:ligero-devtools:%s'
-            %s    runtimeOnly 'com.ligero:ligero-server-jdk:%s'
-                runtimeOnly 'com.ligero:ligero-json:%s'
+                implementation 'com.ligeroframework:ligero-devtools:%s'
+            %s    runtimeOnly 'com.ligeroframework:ligero-server-jdk:%s'
+                runtimeOnly 'com.ligeroframework:ligero-json:%s'
                 runtimeOnly 'org.slf4j:slf4j-simple:2.0.16'
 
-                testImplementation 'com.ligero:ligero-test:%s'
+                testImplementation 'com.ligeroframework:ligero-test:%s'
                 testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
                 testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
             %s}
