@@ -1,0 +1,83 @@
+name: Release CLI
+
+# When you publish a GitHub Release (tag e.g. v0.1.0), this builds a native
+# `ligero` binary for each OS with GraalVM (no JVM required), plus the JVM
+# distribution zip, and attaches everything — with the installers — to the Release.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (without leading v)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  native:
+    name: native (${{ matrix.label }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest,     label: linux-x64,     ext: '' }
+          - { os: ubuntu-24.04-arm,  label: linux-arm64,   ext: '' }
+          - { os: macos-13,          label: macos-x64,     ext: '' }
+          - { os: macos-latest,      label: macos-arm64,   ext: '' }
+          - { os: windows-latest,    label: windows-x64,   ext: '.exe' }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: '21'
+          distribution: 'graalvm'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          native-image-job-reports: 'true'
+
+      - name: Resolve version
+        shell: bash
+        run: echo "VERSION=${{ github.event.inputs.version || github.ref_name }}" | sed 's/=v/=/' >> "$GITHUB_ENV"
+
+      - name: Build native image
+        shell: bash
+        run: ./gradlew nativeCompile -Pversion="$VERSION" --no-daemon --stacktrace
+
+      - name: Rename binary
+        shell: bash
+        run: |
+          src="build/native/nativeCompile/ligero${{ matrix.ext }}"
+          cp "$src" "ligero-${{ matrix.label }}${{ matrix.ext }}"
+
+      - name: Attach to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ligero-${{ matrix.label }}${{ matrix.ext }}
+
+  jvm-dist:
+    name: jvm zip + installers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Resolve version
+        run: echo "VERSION=${{ github.event.inputs.version || github.ref_name }}" | sed 's/=v/=/' >> "$GITHUB_ENV"
+
+      - name: Build distribution zip
+        run: ./gradlew distZip -Pversion="$VERSION" --no-daemon
+
+      - name: Attach zip + installers to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            build/distributions/*.zip
+            install.sh
+            install.ps1
