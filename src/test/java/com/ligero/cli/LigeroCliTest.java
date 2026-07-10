@@ -24,8 +24,8 @@ class LigeroCliTest {
         Path root = dir.resolve("my-api");
         assertThat(root.resolve("settings.gradle")).exists();
         assertThat(Files.readString(root.resolve("build.gradle")))
-            .contains("com.ligero:ligero-core")
-            .contains("com.ligero:ligero-devtools")
+            .contains("com.ligeroframework:ligero-core")
+            .contains("com.ligeroframework:ligero-devtools")
             .contains("mainClass = 'com.acme.api.Application'");
         // Application lists modules, no wiring inline
         assertThat(Files.readString(root.resolve("src/main/java/com/acme/api/Application.java")))
@@ -96,7 +96,7 @@ class LigeroCliTest {
         assertThat(Files.readString(greeting.resolve("DefaultGreetingService.java"))).contains("@Service");
         assertThat(Files.readString(greeting.resolve("GreetingController.java"))).contains("@Controller");
         assertThat(Files.readString(root.resolve("build.gradle")))
-            .contains("annotationProcessor 'com.ligero:ligero-processor");
+            .contains("annotationProcessor 'com.ligeroframework:ligero-processor");
         assertThat(Files.readString(root.resolve("src/main/java/com/acme/proc/Application.java")))
             .contains("import com.ligero.generated.GeneratedModules;")
             .contains("Modules.install(app, devtools.recorder(), GeneratedModules.all())")
