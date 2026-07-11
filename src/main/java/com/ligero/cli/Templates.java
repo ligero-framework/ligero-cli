@@ -10,7 +10,7 @@ final class Templates {
     private Templates() {
     }
 
-    static final String LIGERO_VERSION = "0.5.0";
+    static final String LIGERO_VERSION = "0.6.0";
 
     // ---------------------------------------------------------------- project
 
@@ -18,7 +18,7 @@ final class Templates {
         return "rootProject.name = '" + name + "'\n";
     }
 
-    static String buildGradle(String basePackage, String db, boolean processor) {
+    static String buildGradle(String basePackage, String db, boolean processor, boolean devtools) {
         String dbDependency = switch (db) {
             case "postgres" -> "    implementation 'org.postgresql:postgresql:42.7.4'\n";
             case "h2" -> "    implementation 'com.h2database:h2:2.3.232'\n";
@@ -28,6 +28,11 @@ final class Templates {
         // annotated classes. Remove this line to hand-write the wiring instead.
         String processorDependency = processor
             ? "    annotationProcessor 'com.ligeroframework:ligero-processor:" + LIGERO_VERSION + "'\n"
+            : "";
+        // Visual debugger at /ligero/dev — opt out with `--devtools false`.
+        String devtoolsDependency = devtools
+            ? "    // Visual debugger at /ligero/dev — development only, drop it for production builds.\n"
+              + "    implementation 'com.ligeroframework:ligero-devtools:" + LIGERO_VERSION + "'\n"
             : "";
         return """
             plugins {
@@ -50,9 +55,7 @@ final class Templates {
 
             dependencies {
                 implementation 'com.ligeroframework:ligero-core:%s'
-                // Visual debugger at /ligero/dev — development only, drop it for production builds.
-                implementation 'com.ligeroframework:ligero-devtools:%s'
-            %s    runtimeOnly 'com.ligeroframework:ligero-server-jdk:%s'
+            %s%s    runtimeOnly 'com.ligeroframework:ligero-server-jdk:%s'
                 runtimeOnly 'com.ligeroframework:ligero-json:%s'
                 runtimeOnly 'org.slf4j:slf4j-simple:2.0.16'
 
@@ -64,7 +67,7 @@ final class Templates {
             test {
                 useJUnitPlatform()
             }
-            """.formatted(basePackage, LIGERO_VERSION, LIGERO_VERSION, processorDependency,
+            """.formatted(basePackage, LIGERO_VERSION, devtoolsDependency, processorDependency,
                 LIGERO_VERSION, LIGERO_VERSION, LIGERO_VERSION, dbDependency);
     }
 
@@ -78,7 +81,7 @@ final class Templates {
             """;
     }
 
-    static String projectReadme(String name, String db, boolean processor) {
+    static String projectReadme(String name, String db, boolean processor, boolean devtools) {
         String wiringSection = processor
             ? """
 
@@ -102,10 +105,10 @@ final class Templates {
                 more — each generator writes the file and wires it into its module.
                 Prefer annotations? Regenerate with `--wiring=processor`.
                 """;
-        return projectReadmeBody(name, db) + wiringSection;
+        return projectReadmeBody(name, db, devtools) + wiringSection;
     }
 
-    private static String projectReadmeBody(String name, String db) {
+    private static String projectReadmeBody(String name, String db, boolean devtools) {
         String dbSection = switch (db) {
             case "postgres" -> """
 
@@ -123,13 +126,24 @@ final class Templates {
                 """;
             default -> "";
         };
+        String runComment = devtools ? "  (devtools at /ligero/dev)" : "";
+        String devtoolsSection = devtools ? """
+
+
+            ## Devtools
+
+            While the app runs, open **http://localhost:8080/ligero/dev**: a
+            graph-centred workbench where you can run any route, watch it light up
+            its path through the bean graph, and inspect the JSON in/out and timing
+            of every layer. Development only — remove `ligero-devtools` or set
+            `LIGERO_DEVTOOLS=false` for production.""" : "";
         return """
             # %s
 
             A modular [Ligero](https://github.com/ligero-framework/ligero) application.
 
             ```bash
-            gradle run                 # http://localhost:8080  (devtools at /ligero/dev)
+            gradle run                 # http://localhost:8080%s
             gradle test
             docker compose up --build  # containerized
             ```
@@ -161,20 +175,25 @@ final class Templates {
             ligero generate resource Order           # a whole CRUD slice at once
             ```
 
-            Each generator writes the file **and** wires it into its module for you.
-
-            ## Devtools
-
-            While the app runs, open **http://localhost:8080/ligero/dev**: the bean
-            dependency graph and a live trace of every request through the layers
-            (arguments, results, timing). Development only — remove `ligero-devtools`
-            or set `LIGERO_DEVTOOLS=false` for production.
-            %s""".formatted(name, dbSection);
+            Each generator writes the file **and** wires it into its module for you.%s
+            %s""".formatted(name, runComment, devtoolsSection, dbSection);
     }
 
     // ------------------------------------------------------------ application
 
-    static String application(String basePackage, String db) {
+    static String application(String basePackage, String db, boolean devtools) {
+        String extraImports = devtools
+            ? "import com.ligero.beans.Beans;\nimport com.ligero.devtools.Devtools;\n"
+            : "";
+        String devtoolsLine = devtools
+            ? "\n        System.out.println(\"Devtools at http://localhost:\" + app.port() + \"/ligero/dev\");"
+            : "";
+        String wiring = devtools
+            ? "        // Visual debugger at /ligero/dev (set LIGERO_DEVTOOLS=false to disable).\n"
+              + "        Devtools devtools = Devtools.create();\n"
+              + "        Beans beans = Modules.install(app, devtools.recorder(), modules());\n"
+              + "        devtools.install(app, beans);"
+            : "        Modules.install(app, modules());";
         return """
             package %s;
 
@@ -184,9 +203,7 @@ final class Templates {
             import com.ligero.Ligero;
             import com.ligero.LigeroModule;
             import com.ligero.Modules;
-            import com.ligero.beans.Beans;
-            import com.ligero.devtools.Devtools;
-            import com.ligero.middleware.RequestLoggingMiddleware;
+            %simport com.ligero.middleware.RequestLoggingMiddleware;
 
             public class Application {
 
@@ -194,8 +211,7 @@ final class Templates {
                     Ligero app = create();
                     app.start();
                     Runtime.getRuntime().addShutdownHook(new Thread(app::stop));
-                    System.out.println("Running at  http://localhost:" + app.port());
-                    System.out.println("Devtools at http://localhost:" + app.port() + "/ligero/dev");
+                    System.out.println("Running at  http://localhost:" + app.port());%s
                 }
 
                 /** Assembles the app from its modules — no wiring here, that lives in the modules. */
@@ -203,10 +219,7 @@ final class Templates {
                     Ligero app = Ligero.create(8080);
                     app.use(new RequestLoggingMiddleware());
 
-                    // Visual debugger at /ligero/dev (set LIGERO_DEVTOOLS=false to disable).
-                    Devtools devtools = Devtools.create();
-                    Beans beans = Modules.install(app, devtools.recorder(), modules());
-                    devtools.install(app, beans);
+            %s
 
                     return app;
                 }
@@ -219,51 +232,51 @@ final class Templates {
                     };
                 }
             }
-            """.formatted(basePackage, basePackage);
+            """.formatted(basePackage, basePackage, extraImports, devtoolsLine, wiring);
     }
 
-    static String applicationProcessor(String basePackage, String db) {
+    static String applicationProcessor(String basePackage, String db, boolean devtools) {
         boolean hasDb = !"none".equals(db);
-        String dbImports = hasDb ? """
-
-            import com.ligero.middleware.HealthMiddleware;
-            import javax.sql.DataSource;
-            import java.sql.Connection;
-            """ : "";
-        String health = hasDb ? """
-
-                    app.use(HealthMiddleware.builder()
-                        .check("db", () -> isDbUp(beans.get(DataSource.class)))
-                        .build());
-            """ : "";
-        String isDbUp = hasDb ? """
-
-                private static boolean isDbUp(DataSource dataSource) {
-                    try (Connection c = dataSource.getConnection()) {
-                        return c.isValid(1);
-                    } catch (Exception e) {
-                        return false;
-                    }
-                }
-            """ : "";
+        String dbImports = hasDb
+            ? "\nimport com.ligero.middleware.HealthMiddleware;\nimport javax.sql.DataSource;\nimport java.sql.Connection;\n"
+            : "";
+        String imports = "import com.ligero.Ligero;\n"
+            + "import com.ligero.Modules;\n"
+            + ((devtools || hasDb) ? "import com.ligero.beans.Beans;\n" : "")
+            + (devtools ? "import com.ligero.devtools.Devtools;\n" : "")
+            + "import com.ligero.generated.GeneratedModules;\n"
+            + "import com.ligero.middleware.RequestLoggingMiddleware;\n";
+        String devtoolsLine = devtools
+            ? "\n        System.out.println(\"Devtools at http://localhost:\" + app.port() + \"/ligero/dev\");"
+            : "";
+        String wiring;
+        if (devtools) {
+            wiring = "        // Visual debugger at /ligero/dev (set LIGERO_DEVTOOLS=false to disable).\n"
+                   + "        Devtools devtools = Devtools.create();\n"
+                   + "        Beans beans = Modules.install(app, devtools.recorder(), GeneratedModules.all());\n"
+                   + "        devtools.install(app, beans);";
+        } else if (hasDb) {
+            wiring = "        Beans beans = Modules.install(app, GeneratedModules.all());";
+        } else {
+            wiring = "        Modules.install(app, GeneratedModules.all());";
+        }
+        String health = hasDb
+            ? "\n        app.use(HealthMiddleware.builder()\n            .check(\"db\", () -> isDbUp(beans.get(DataSource.class)))\n            .build());"
+            : "";
+        String isDbUp = hasDb
+            ? "\n    private static boolean isDbUp(DataSource dataSource) {\n        try (Connection c = dataSource.getConnection()) {\n            return c.isValid(1);\n        } catch (Exception e) {\n            return false;\n        }\n    }\n"
+            : "";
         return """
             package %s;
 
-            import com.ligero.Ligero;
-            import com.ligero.Modules;
-            import com.ligero.beans.Beans;
-            import com.ligero.devtools.Devtools;
-            import com.ligero.generated.GeneratedModules;
-            import com.ligero.middleware.RequestLoggingMiddleware;
-            %s
+            %s%s
             public class Application {
 
                 public static void main(String[] args) throws Exception {
                     Ligero app = create();
                     app.start();
                     Runtime.getRuntime().addShutdownHook(new Thread(app::stop));
-                    System.out.println("Running at  http://localhost:" + app.port());
-                    System.out.println("Devtools at http://localhost:" + app.port() + "/ligero/dev");
+                    System.out.println("Running at  http://localhost:" + app.port());%s
                 }
 
                 /** No wiring here: GeneratedModules is written by ligero-processor from your annotations. */
@@ -271,14 +284,12 @@ final class Templates {
                     Ligero app = Ligero.create(8080);
                     app.use(new RequestLoggingMiddleware());
 
-                    Devtools devtools = Devtools.create();
-                    Beans beans = Modules.install(app, devtools.recorder(), GeneratedModules.all());
-                    devtools.install(app, beans);
-            %s
+            %s%s
+
                     return app;
                 }
             %s}
-            """.formatted(basePackage, dbImports, health, isDbUp);
+            """.formatted(basePackage, imports, dbImports, devtoolsLine, wiring, health, isDbUp);
     }
 
     static String greetingConfigProvides(String basePackage, String db) {

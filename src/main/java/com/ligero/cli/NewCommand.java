@@ -10,7 +10,7 @@ final class NewCommand {
 
     int run(Path workingDir, List<String> args) throws IOException {
         if (args.isEmpty() || args.get(0).startsWith("--")) {
-            throw new IllegalArgumentException("Usage: ligero new <project-name> [--package <base.package>] [--db none|h2|postgres] [--wiring explicit|processor]");
+            throw new IllegalArgumentException("Usage: ligero new <project-name> [--package <base.package>] [--db none|h2|postgres] [--wiring explicit|processor] [--devtools true|false]");
         }
         String name = args.get(0);
         if (!name.matches("[a-zA-Z][a-zA-Z0-9_-]*")) {
@@ -31,6 +31,12 @@ final class NewCommand {
             throw new IllegalArgumentException("--wiring must be one of: explicit, processor");
         }
         boolean processor = "processor".equals(wiring);
+        // Devtools are wired by default; opt out with `--devtools false`.
+        String devtoolsOpt = LigeroCli.option(args, "--devtools");
+        if (devtoolsOpt != null && !java.util.Set.of("true", "false").contains(devtoolsOpt)) {
+            throw new IllegalArgumentException("--devtools must be one of: true, false");
+        }
+        boolean devtools = !"false".equals(devtoolsOpt);
         String basePackage = LigeroCli.option(args, "--package");
         if (basePackage == null) {
             basePackage = "com.example." + name.toLowerCase().replaceAll("[^a-z0-9]", "");
@@ -48,9 +54,9 @@ final class NewCommand {
         Path greetingDir = packageDir.resolve("greeting");
 
         write(root.resolve("settings.gradle"), Templates.settingsGradle(name));
-        write(root.resolve("build.gradle"), Templates.buildGradle(basePackage, db, processor));
+        write(root.resolve("build.gradle"), Templates.buildGradle(basePackage, db, processor, devtools));
         write(root.resolve(".gitignore"), Templates.gitignore());
-        write(root.resolve("README.md"), Templates.projectReadme(name, db, processor));
+        write(root.resolve("README.md"), Templates.projectReadme(name, db, processor, devtools));
         write(root.resolve("Dockerfile"), Templates.dockerfile(name));
         write(root.resolve("docker-compose.yml"), Templates.dockerCompose(name, db));
         if ("postgres".equals(db)) {
@@ -67,7 +73,7 @@ final class NewCommand {
         if (processor) {
             // Processor mode: no hand-written module; annotate exactly one repository
             // impl (two would generate a duplicate binding), add a @Provides DataSource.
-            write(root.resolve(packageDir).resolve("Application.java"), Templates.applicationProcessor(basePackage, db));
+            write(root.resolve(packageDir).resolve("Application.java"), Templates.applicationProcessor(basePackage, db, devtools));
             if ("none".equals(db)) {
                 write(root.resolve(greetingDir).resolve("InMemoryGreetingRepository.java"), Templates.inMemoryGreetingRepository(basePackage));
             } else {
@@ -76,7 +82,7 @@ final class NewCommand {
             }
         } else {
             // Explicit mode: a GreetingModule owns the binds; both repo impls exist.
-            write(root.resolve(packageDir).resolve("Application.java"), Templates.application(basePackage, db));
+            write(root.resolve(packageDir).resolve("Application.java"), Templates.application(basePackage, db, devtools));
             write(root.resolve(greetingDir).resolve("GreetingModule.java"), Templates.greetingModule(basePackage, db));
             write(root.resolve(greetingDir).resolve("InMemoryGreetingRepository.java"), Templates.inMemoryGreetingRepository(basePackage));
             if (!"none".equals(db)) {
@@ -102,14 +108,15 @@ final class NewCommand {
               ligero generate module Billing     # an empty feature module
             """;
         System.out.println("""
-            Created project '%s' (db: %s, wiring: %s) — %s
+            Created project '%s' (db: %s, wiring: %s, devtools: %s) — %s
 
             Next steps:
               cd %s
-              gradle run                 # app on http://localhost:8080, devtools on /ligero/dev
+              gradle run                 # app on http://localhost:8080%s
               gradle test                # end-to-end test
               docker compose up --build  # containerized app%s
-            %s""".formatted(name, db, wiring, wiringNote, name,
+            %s""".formatted(name, db, wiring, devtools, wiringNote, name,
+                devtools ? ", devtools on /ligero/dev" : "",
                 "postgres".equals(db) ? " + PostgreSQL (try /api/greetings)" : "", addFeatures));
         return 0;
     }
