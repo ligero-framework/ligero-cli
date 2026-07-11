@@ -1,9 +1,10 @@
 plugins {
     id 'application'
+    id 'org.graalvm.buildtools.native' version '0.10.3'
 }
 
-group = 'com.ligero'
-version = '0.1.0-SNAPSHOT'
+group = 'com.ligeroframework'
+version = project.findProperty('version') ?: '0.1.0-SNAPSHOT'
 description = 'Scaffolding CLI for the Ligero web framework'
 
 java {
@@ -29,4 +30,18 @@ dependencies {
 
 test {
     useJUnitPlatform()
+}
+
+// GraalVM native image: a single self-contained `ligero` binary per OS —
+// no JVM required, near-instant startup. Built in CI (see .github/workflows/release.yml).
+graalvmNative {
+    toolchainDetection = false
+    binaries {
+        main {
+            imageName = 'ligero'
+            mainClass = 'com.ligero.cli.LigeroCli'
+            buildArgs.add('--no-fallback')
+            buildArgs.add('-O2')
+        }
+    }
 }

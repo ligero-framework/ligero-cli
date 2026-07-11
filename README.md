@@ -20,10 +20,27 @@
 
 ## Install
 
+**macOS / Linux** — native binary, no JVM required:
+
 ```bash
-./gradlew installDist
-export PATH="$PATH:$(pwd)/build/install/ligero/bin"
+curl -fsSL https://github.com/ligero-framework/ligero-cli/releases/latest/download/install.sh | sh
 ```
+
+**Windows** (PowerShell):
+
+```powershell
+irm https://github.com/ligero-framework/ligero-cli/releases/latest/download/install.ps1 | iex
+```
+
+Both download the native `ligero` for your OS into `~/.ligero/bin` and add it to your PATH.
+
+<details>
+<summary>Other ways</summary>
+
+- **Manual download**: grab the binary for your OS (or the `ligero-<version>.zip` that needs a JVM) from the [latest release](https://github.com/ligero-framework/ligero-cli/releases/latest), put it on your PATH.
+- **From source**: `./gradlew installDist` then add `build/install/ligero/bin` to your PATH.
+- **SDKMAN!** *(planned)*: `sdk install ligero`.
+</details>
 
 ## Usage
 
