@@ -27,16 +27,21 @@ final class Templates {
         // Opt-in compile-time DI: generates the explicit bind() wiring from your
         // annotated classes. Remove this line to hand-write the wiring instead.
         String processorDependency = processor
-            ? "    annotationProcessor 'com.ligeroframework:ligero-processor:" + LIGERO_VERSION + "'\n"
+            ? "    annotationProcessor \"com.ligeroframework:ligero-processor:$ligeroVersion\"\n"
             : "";
         // Visual debugger at /ligero/dev — opt out with `--devtools false`.
         String devtoolsDependency = devtools
             ? "    // Visual debugger at /ligero/dev — development only, drop it for production builds.\n"
-              + "    implementation 'com.ligeroframework:ligero-devtools:" + LIGERO_VERSION + "'\n"
+              + "    implementation \"com.ligeroframework:ligero-devtools:$ligeroVersion\"\n"
             : "";
+        // One place to bump the framework version: the `ligeroVersion` ext property.
         return """
             plugins {
                 id 'application'
+            }
+
+            ext {
+                ligeroVersion = '%s'
             }
 
             java {
@@ -54,12 +59,12 @@ final class Templates {
             }
 
             dependencies {
-                implementation 'com.ligeroframework:ligero-core:%s'
-            %s%s    runtimeOnly 'com.ligeroframework:ligero-server-jdk:%s'
-                runtimeOnly 'com.ligeroframework:ligero-json:%s'
+                implementation "com.ligeroframework:ligero-core:$ligeroVersion"
+            %s%s    runtimeOnly "com.ligeroframework:ligero-server-jdk:$ligeroVersion"
+                runtimeOnly "com.ligeroframework:ligero-json:$ligeroVersion"
                 runtimeOnly 'org.slf4j:slf4j-simple:2.0.16'
 
-                testImplementation 'com.ligeroframework:ligero-test:%s'
+                testImplementation "com.ligeroframework:ligero-test:$ligeroVersion"
                 testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
                 testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
             %s}
@@ -67,8 +72,7 @@ final class Templates {
             test {
                 useJUnitPlatform()
             }
-            """.formatted(basePackage, LIGERO_VERSION, devtoolsDependency, processorDependency,
-                LIGERO_VERSION, LIGERO_VERSION, LIGERO_VERSION, dbDependency);
+            """.formatted(LIGERO_VERSION, basePackage, devtoolsDependency, processorDependency, dbDependency);
     }
 
     static String gitignore() {
@@ -95,6 +99,13 @@ final class Templates {
                 third-party beans (a `DataSource`) with a `@Provides` static method.
                 Remove the `annotationProcessor` line in `build.gradle` to switch back
                 to hand-written modules.
+
+                > **Build once before your IDE is happy.** `GeneratedModules` is
+                > *generated at compile time*, so `import com.ligero.generated.GeneratedModules`
+                > shows as unresolved until the first build. Run `gradle build` (or
+                > `gradle run`) once; in IntelliJ, enable **Settings → Build → Compiler
+                > → Annotation Processors → Enable annotation processing** (and delegate
+                > the build to Gradle) so the IDE picks it up automatically.
                 """
             : """
 
@@ -185,9 +196,6 @@ final class Templates {
         String extraImports = devtools
             ? "import com.ligero.beans.Beans;\nimport com.ligero.devtools.Devtools;\n"
             : "";
-        String devtoolsLine = devtools
-            ? "\n        System.out.println(\"Devtools at http://localhost:\" + app.port() + \"/ligero/dev\");"
-            : "";
         String wiring = devtools
             ? "        // Visual debugger at /ligero/dev (set LIGERO_DEVTOOLS=false to disable).\n"
               + "        Devtools devtools = Devtools.create();\n"
@@ -208,10 +216,11 @@ final class Templates {
             public class Application {
 
                 public static void main(String[] args) throws Exception {
+                    // Ligero logs the startup line (host, port, engine) and devtools its
+                    // /ligero/dev mount, so main() stays free of println boilerplate.
                     Ligero app = create();
                     app.start();
                     Runtime.getRuntime().addShutdownHook(new Thread(app::stop));
-                    System.out.println("Running at  http://localhost:" + app.port());%s
                 }
 
                 /** Assembles the app from its modules — no wiring here, that lives in the modules. */
@@ -232,7 +241,7 @@ final class Templates {
                     };
                 }
             }
-            """.formatted(basePackage, basePackage, extraImports, devtoolsLine, wiring);
+            """.formatted(basePackage, basePackage, extraImports, wiring);
     }
 
     static String applicationProcessor(String basePackage, String db, boolean devtools) {
@@ -246,9 +255,6 @@ final class Templates {
             + (devtools ? "import com.ligero.devtools.Devtools;\n" : "")
             + "import com.ligero.generated.GeneratedModules;\n"
             + "import com.ligero.middleware.RequestLoggingMiddleware;\n";
-        String devtoolsLine = devtools
-            ? "\n        System.out.println(\"Devtools at http://localhost:\" + app.port() + \"/ligero/dev\");"
-            : "";
         String wiring;
         if (devtools) {
             wiring = "        // Visual debugger at /ligero/dev (set LIGERO_DEVTOOLS=false to disable).\n"
@@ -273,10 +279,11 @@ final class Templates {
             public class Application {
 
                 public static void main(String[] args) throws Exception {
+                    // Ligero logs the startup line (host, port, engine) and devtools its
+                    // /ligero/dev mount, so main() stays free of println boilerplate.
                     Ligero app = create();
                     app.start();
                     Runtime.getRuntime().addShutdownHook(new Thread(app::stop));
-                    System.out.println("Running at  http://localhost:" + app.port());%s
                 }
 
                 /** No wiring here: GeneratedModules is written by ligero-processor from your annotations. */
@@ -289,7 +296,7 @@ final class Templates {
                     return app;
                 }
             %s}
-            """.formatted(basePackage, imports, dbImports, devtoolsLine, wiring, health, isDbUp);
+            """.formatted(basePackage, imports, dbImports, wiring, health, isDbUp);
     }
 
     static String greetingConfigProvides(String basePackage, String db) {
