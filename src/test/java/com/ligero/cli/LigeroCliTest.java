@@ -96,7 +96,9 @@ class LigeroCliTest {
         assertThat(Files.readString(greeting.resolve("DefaultGreetingService.java"))).contains("@Service");
         assertThat(Files.readString(greeting.resolve("GreetingController.java"))).contains("@Controller");
         assertThat(Files.readString(root.resolve("build.gradle")))
-            .contains("annotationProcessor 'com.ligeroframework:ligero-processor");
+            .contains("ext {")
+            .contains("ligeroVersion = ")
+            .contains("annotationProcessor \"com.ligeroframework:ligero-processor:$ligeroVersion\"");
         assertThat(Files.readString(root.resolve("src/main/java/com/acme/proc/Application.java")))
             .contains("import com.ligero.generated.GeneratedModules;")
             .contains("Modules.install(app, devtools.recorder(), GeneratedModules.all())")
