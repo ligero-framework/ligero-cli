@@ -1,0 +1,72 @@
+name: Bump targeted Ligero version
+
+# `ligero new` pins the framework version its projects depend on
+# (`Templates.LIGERO_VERSION`, surfaced as the `ligeroVersion` ext property in
+# the generated build.gradle). When the framework publishes a release it fires a
+# `repository_dispatch` here; this workflow bumps that constant and opens a PR,
+# so new projects always target the latest published Ligero without a manual
+# edit. Can also be run by hand from the Actions tab.
+on:
+  repository_dispatch:
+    types: [framework-released]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Framework version to target (without leading v)'
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: v
+        run: |
+          v="${{ github.event.client_payload.version || github.event.inputs.version }}"
+          v="${v#v}"
+          if [[ ! "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Version '$v' is not X.Y.Z — skipping the bump."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Point LIGERO_VERSION at the new framework
+        if: steps.v.outputs.skip != 'true'
+        run: |
+          sed -i -E 's/(LIGERO_VERSION = ")[^"]+(")/\1${{ steps.v.outputs.version }}\2/' \
+            src/main/java/com/ligero/cli/Templates.java
+
+      - name: Open the version-bump PR
+        if: steps.v.outputs.skip != 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          # `main` is protected (changes go through a PR + checks), so open a PR
+          # instead of pushing. A RELEASE_BOT_TOKEN (PAT/App token) makes the
+          # PR's checks run — GITHUB_TOKEN-created PRs don't trigger CI.
+          token: ${{ secrets.RELEASE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
+          base: main
+          branch: chore/target-ligero-${{ steps.v.outputs.version }}
+          delete-branch: true
+          add-paths: src/main/java/com/ligero/cli/Templates.java
+          commit-message: "chore: generated projects target Ligero ${{ steps.v.outputs.version }}"
+          title: "chore: generated projects target Ligero ${{ steps.v.outputs.version }}"
+          body: |
+            Automated bump of the framework version `ligero new` pins
+            (`Templates.LIGERO_VERSION` / the generated `ligeroVersion` ext
+            property) to `${{ steps.v.outputs.version }}`, triggered by the
+            framework's release. Merge to make new projects target the latest
+            published Ligero.
+
+            A CLI release is cut only on a framework MINOR/MAJOR (or when the CLI
+            itself changes) — this PR just keeps the pinned version current in
+            between. See `design/release-coordination-and-testing.md` in the
+            framework repo.
+          author: Duvan Jamid <duvanjamid.work@gmail.com>
+          committer: Duvan Jamid <duvanjamid.work@gmail.com>
