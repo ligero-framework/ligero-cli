@@ -83,20 +83,20 @@ jobs:
             install.ps1
 
   bump-snapshot:
-    # After a successful release, move `main` to the next patch -SNAPSHOT so
-    # everyday development targets the upcoming version — no manual edit.
+    # After a successful release, open a PR moving `main` to the next patch
+    # -SNAPSHOT so everyday development targets the upcoming version.
     # Only for real releases (not workflow_dispatch) and not pre-releases.
     needs: [native, jvm-dist]
     if: ${{ github.event_name == 'release' && !github.event.release.prerelease }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
         with:
           ref: main
-          # A push to a protected `main` needs a token that can bypass the rule:
-          # set a RELEASE_BOT_TOKEN secret, otherwise the default GITHUB_TOKEN is used.
-          token: ${{ secrets.RELEASE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Compute next -SNAPSHOT from the tag
         id: next
@@ -110,17 +110,28 @@ jobs:
           IFS='.' read -r major minor patch <<< "$released"
           echo "next=${major}.${minor}.$((patch + 1))-SNAPSHOT" >> "$GITHUB_OUTPUT"
 
-      - name: Bump gradle.properties on main
+      - name: Apply the bump
         if: steps.next.outputs.skip != 'true'
-        run: |
-          next="${{ steps.next.outputs.next }}"
-          sed -i -E "s/^version=.*/version=${next}/" gradle.properties
-          if git diff --quiet -- gradle.properties; then
-            echo "gradle.properties already at ${next} — nothing to do."
-            exit 0
-          fi
-          git config user.name "Duvan Jamid"
-          git config user.email "duvanjamid.work@gmail.com"
-          git add gradle.properties
-          git commit -m "chore: begin ${next} development"
-          git push origin HEAD:main
+        run: sed -i -E "s/^version=.*/version=${{ steps.next.outputs.next }}/" gradle.properties
+
+      - name: Open the version-bump PR
+        if: steps.next.outputs.skip != 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          # `main` is protected (changes go through a PR + checks), so open a PR
+          # instead of pushing. Use a RELEASE_BOT_TOKEN (PAT/App token) so the
+          # PR's checks run — GITHUB_TOKEN-created PRs don't trigger CI. Enable
+          # repo auto-merge to land it hands-free.
+          token: ${{ secrets.RELEASE_BOT_TOKEN || secrets.GITHUB_TOKEN }}
+          base: main
+          branch: chore/next-snapshot
+          delete-branch: true
+          add-paths: gradle.properties
+          commit-message: "chore: begin ${{ steps.next.outputs.next }} development"
+          title: "chore: begin ${{ steps.next.outputs.next }} development"
+          body: |
+            Automated post-release bump of `gradle.properties` to the next
+            `-SNAPSHOT` (`${{ steps.next.outputs.next }}`) after publishing
+            `${{ github.ref_name }}`. Safe to merge once checks pass.
+          author: Duvan Jamid <duvanjamid.work@gmail.com>
+          committer: Duvan Jamid <duvanjamid.work@gmail.com>
