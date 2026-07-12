@@ -4,7 +4,7 @@ plugins {
 }
 
 group = 'com.ligeroframework'
-version = project.findProperty('version') ?: '0.1.0-SNAPSHOT'
+// version comes from gradle.properties; release CI overrides with -Pversion=<tag>
 description = 'Scaffolding CLI for the Ligero web framework'
 
 java {
