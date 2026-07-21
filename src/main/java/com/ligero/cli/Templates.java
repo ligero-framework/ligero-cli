@@ -10,7 +10,7 @@ final class Templates {
     private Templates() {
     }
 
-    static final String LIGERO_VERSION = "0.6.0";
+    static final String LIGERO_VERSION = "0.7.0";
 
     // ---------------------------------------------------------------- project
 

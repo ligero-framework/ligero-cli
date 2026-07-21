@@ -40,6 +40,7 @@ public final class LigeroCli {
                 }
                 case "new" -> new NewCommand().run(workingDir, rest(args));
                 case "generate", "g" -> new GenerateCommand().run(workingDir, rest(args));
+                case "add" -> new AddCommand().run(workingDir, rest(args));
                 case "dev" -> new DevCommand().run(workingDir, rest(args));
                 default -> {
                     System.err.println("Unknown command: " + args[0] + "\n\n" + usage());
@@ -66,6 +67,7 @@ public final class LigeroCli {
             Usage:
               ligero new <project-name> [--package <base.package>] [--db none|h2|postgres] [--wiring explicit|processor]
               ligero generate <kind> <Name> [--module <Name>]
+              ligero add <module>                               (wire an optional module: mcp | query)
               ligero dev                                        (run + restart on file change)
 
             Wiring (ligero new):
@@ -81,10 +83,14 @@ public final class LigeroCli {
               controller <Name>   a controller with a route, bound in the module
               resource <Name>     a whole CRUD slice: module + repository + service + controller
 
+            Add optional modules (ligero add):
+              mcp     Model Context Protocol server — adds ligero-mcp + a starter McpConfig
+              query   the HTTP QUERY method — built in, prints how to use app.query(...)
+
             Examples:
               ligero new my-api --package com.acme.api --db h2
               ligero generate resource Order
-              ligero generate module Billing
+              ligero add mcp
               ligero generate service Invoice --module Billing
             """;
     }
