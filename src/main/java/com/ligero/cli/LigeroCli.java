@@ -40,6 +40,7 @@ public final class LigeroCli {
                 }
                 case "new" -> new NewCommand().run(workingDir, rest(args));
                 case "generate", "g" -> new GenerateCommand().run(workingDir, rest(args));
+                case "add" -> new AddCommand().run(workingDir, rest(args));
                 case "dev" -> new DevCommand().run(workingDir, rest(args));
                 default -> {
                     System.err.println("Unknown command: " + args[0] + "\n\n" + usage());
@@ -66,6 +67,7 @@ public final class LigeroCli {
             Usage:
               ligero new <project-name> [--package <base.package>] [--db none|h2|postgres] [--wiring explicit|processor]
               ligero generate <kind> <Name> [--module <Name>]
+              ligero add <module>                               (scheduler|cache|redis|resilience|auth|events|jdbc|mcp|query)
               ligero dev                                        (run + restart on file change)
 
             Wiring (ligero new):
@@ -81,11 +83,20 @@ public final class LigeroCli {
               controller <Name>   a controller with a route, bound in the module
               resource <Name>     a whole CRUD slice: module + repository + service + controller
 
+            Add optional modules (ligero add <module> [--pool]):
+              scheduler   background tasks (ligero-scheduler)
+              cache       in-process Cache (ligero-core)         redis   distributed RedisCache
+              resilience  retry / timeout / circuit breaker      auth    JWT (HS256/RS256/ES256 + JWKS)
+              events      in-process event bus (ligero-core)     jdbc    JDBC helper (--pool for HikariCP)
+              mcp         Model Context Protocol server          query   the built-in HTTP QUERY method
+            Each adds the dependency (when needed) and a starter <Module>Config in <base>.config.
+
             Examples:
               ligero new my-api --package com.acme.api --db h2
               ligero generate resource Order
-              ligero generate module Billing
-              ligero generate service Invoice --module Billing
+              ligero add scheduler
+              ligero add jdbc --pool
+              ligero add mcp
             """;
     }
 

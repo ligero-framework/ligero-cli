@@ -7,8 +7,18 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **`ligero add <module>`** — wire an optional module into the current project:
+  adds the dependency (Groovy or Kotlin DSL, when the module isn't in
+  `ligero-core`) and drops a starter `<Module>Config` in `<base>.config`.
+  Supports **`scheduler`**, **`cache`**, **`redis`**, **`resilience`**,
+  **`auth`**, **`events`**, **`jdbc`** (with **`--pool`** for HikariCP),
+  **`mcp`**, and **`query`** (the built-in HTTP method — prints usage). Idempotent.
 - `--devtools true|false` option for `ligero new` — the devtools workbench is
   scaffolded **on by default**; pass `--devtools false` to skip it.
+
+### Changed
+- Generated projects now target **Ligero 0.7.0** (scheduler, cache, resilience,
+  asymmetric JWT, events, pooling, MCP, the QUERY method).
 - A single `ligeroVersion` ext property in the generated `build.gradle`, so every
   Ligero dependency reads one variable instead of repeating the version.
 - `framework-bump` workflow: a `repository_dispatch` from a framework release

@@ -232,6 +232,79 @@ class LigeroCliTest {
         assertThat(LigeroCli.run(dir, "generate", "controller", "User")).isEqualTo(1);
     }
 
+    // ----------------------------------------------------------------- add
+
+    @Test
+    void addMcpWiresTheDependencyAndAStarterConfig() throws IOException {
+        Path project = newProject();
+
+        assertThat(LigeroCli.run(project, "add", "mcp")).isZero();
+
+        assertThat(Files.readString(project.resolve("build.gradle")))
+            .contains("implementation 'com.ligeroframework:ligero-mcp:0.7.0'");
+        assertThat(Files.readString(project.resolve("src/main/java/com/acme/app/config/McpConfig.java")))
+            .contains("import com.ligero.mcp.McpServer;")
+            .contains("McpServer.create(\"app\"")
+            .contains(".tool(\"echo\"");
+    }
+
+    @Test
+    void addMcpIsIdempotent() throws IOException {
+        Path project = newProject();
+        assertThat(LigeroCli.run(project, "add", "mcp")).isZero();
+        assertThat(LigeroCli.run(project, "add", "mcp")).isZero();
+        // the dependency is present exactly once
+        String build = Files.readString(project.resolve("build.gradle"));
+        assertThat(build.split("com.ligeroframework:ligero-mcp", -1)).hasSize(2);
+    }
+
+    @Test
+    void addQueryIsBuiltInAndTouchesNothing() throws IOException {
+        Path project = newProject();
+        String before = Files.readString(project.resolve("build.gradle"));
+        assertThat(LigeroCli.run(project, "add", "query")).isZero();
+        assertThat(Files.readString(project.resolve("build.gradle"))).isEqualTo(before);
+    }
+
+    @Test
+    void addRejectsUnknownModuleAndMissingArg() throws IOException {
+        Path project = newProject();
+        assertThat(LigeroCli.run(project, "add", "bogus")).isEqualTo(1);
+        assertThat(LigeroCli.run(project, "add")).isEqualTo(1);
+    }
+
+    @Test
+    void addSchedulerWiresDependencyAndConfig() throws IOException {
+        Path project = newProject();
+        assertThat(LigeroCli.run(project, "add", "scheduler")).isZero();
+        assertThat(Files.readString(project.resolve("build.gradle")))
+            .contains("implementation 'com.ligeroframework:ligero-scheduler:0.7.0'");
+        assertThat(Files.readString(project.resolve("src/main/java/com/acme/app/config/SchedulerConfig.java")))
+            .contains("import com.ligero.scheduler.Scheduler;")
+            .contains("fixedRate");
+    }
+
+    @Test
+    void addCacheIsInCoreSoNoDependencyIsAdded() throws IOException {
+        Path project = newProject();
+        String before = Files.readString(project.resolve("build.gradle"));
+        assertThat(LigeroCli.run(project, "add", "cache")).isZero();
+        assertThat(Files.readString(project.resolve("build.gradle"))).isEqualTo(before);
+        assertThat(Files.readString(project.resolve("src/main/java/com/acme/app/config/CacheConfig.java")))
+            .contains("InMemoryCache");
+    }
+
+    @Test
+    void addJdbcWithPoolGeneratesTheHikariVariant() throws IOException {
+        Path project = newProject();
+        assertThat(LigeroCli.run(project, "add", "jdbc", "--pool")).isZero();
+        assertThat(Files.readString(project.resolve("build.gradle")))
+            .contains("implementation 'com.ligeroframework:ligero-jdbc:0.7.0'");
+        assertThat(Files.readString(project.resolve("src/main/java/com/acme/app/config/DatabaseConfig.java")))
+            .contains("DataSources.pooled")
+            .contains("HikariDataSource");
+    }
+
     @Test
     void generateRejectsUnknownKindAndBadName() throws IOException {
         Path project = newProject();
