@@ -8,9 +8,11 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 - **`ligero add <module>`** — wire an optional module into the current project:
-  - `ligero add mcp` adds the `ligero-mcp` dependency to `build.gradle` and
-    generates a starter `McpConfig` (idempotent);
-  - `ligero add query` explains the built-in HTTP QUERY method (no dependency).
+  adds the dependency (Groovy or Kotlin DSL, when the module isn't in
+  `ligero-core`) and drops a starter `<Module>Config` in `<base>.config`.
+  Supports **`scheduler`**, **`cache`**, **`redis`**, **`resilience`**,
+  **`auth`**, **`events`**, **`jdbc`** (with **`--pool`** for HikariCP),
+  **`mcp`**, and **`query`** (the built-in HTTP method — prints usage). Idempotent.
 - `--devtools true|false` option for `ligero new` — the devtools workbench is
   scaffolded **on by default**; pass `--devtools false` to skip it.
 

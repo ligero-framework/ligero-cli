@@ -67,7 +67,7 @@ public final class LigeroCli {
             Usage:
               ligero new <project-name> [--package <base.package>] [--db none|h2|postgres] [--wiring explicit|processor]
               ligero generate <kind> <Name> [--module <Name>]
-              ligero add <module>                               (wire an optional module: mcp | query)
+              ligero add <module>                               (scheduler|cache|redis|resilience|auth|events|jdbc|mcp|query)
               ligero dev                                        (run + restart on file change)
 
             Wiring (ligero new):
@@ -83,15 +83,20 @@ public final class LigeroCli {
               controller <Name>   a controller with a route, bound in the module
               resource <Name>     a whole CRUD slice: module + repository + service + controller
 
-            Add optional modules (ligero add):
-              mcp     Model Context Protocol server — adds ligero-mcp + a starter McpConfig
-              query   the HTTP QUERY method — built in, prints how to use app.query(...)
+            Add optional modules (ligero add <module> [--pool]):
+              scheduler   background tasks (ligero-scheduler)
+              cache       in-process Cache (ligero-core)         redis   distributed RedisCache
+              resilience  retry / timeout / circuit breaker      auth    JWT (HS256/RS256/ES256 + JWKS)
+              events      in-process event bus (ligero-core)     jdbc    JDBC helper (--pool for HikariCP)
+              mcp         Model Context Protocol server          query   the built-in HTTP QUERY method
+            Each adds the dependency (when needed) and a starter <Module>Config in <base>.config.
 
             Examples:
               ligero new my-api --package com.acme.api --db h2
               ligero generate resource Order
+              ligero add scheduler
+              ligero add jdbc --pool
               ligero add mcp
-              ligero generate service Invoice --module Billing
             """;
     }
 
