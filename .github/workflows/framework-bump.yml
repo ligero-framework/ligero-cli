@@ -27,9 +27,12 @@ jobs:
 
       - name: Resolve version
         id: v
+        # The payload is attacker-influenceable text: pass it through the
+        # environment (never substituted into the script) and validate it.
+        env:
+          RAW_VERSION: ${{ github.event.client_payload.version || github.event.inputs.version }}
         run: |
-          v="${{ github.event.client_payload.version || github.event.inputs.version }}"
-          v="${v#v}"
+          v="${RAW_VERSION#v}"
           if [[ ! "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "Version '$v' is not X.Y.Z — skipping the bump."
             echo "skip=true" >> "$GITHUB_OUTPUT"
@@ -39,8 +42,10 @@ jobs:
 
       - name: Point LIGERO_VERSION at the new framework
         if: steps.v.outputs.skip != 'true'
+        env:
+          NEW_VERSION: ${{ steps.v.outputs.version }}
         run: |
-          sed -i -E 's/(LIGERO_VERSION = ")[^"]+(")/\1${{ steps.v.outputs.version }}\2/' \
+          sed -i -E "s/(LIGERO_VERSION = \")[^\"]+(\")/\\1${NEW_VERSION}\\2/" \
             src/main/java/com/ligero/cli/Templates.java
 
       - name: Open the version-bump PR

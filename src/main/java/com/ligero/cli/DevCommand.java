@@ -49,6 +49,7 @@ final class DevCommand {
                 System.out.println("\nligero dev — change detected, restarting…\n");
                 startApp(workingDir, command);               // stops the old one first
                 key.reset();
+                registerAll(watchRoot, watcher);             // pick up directories created since startup
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

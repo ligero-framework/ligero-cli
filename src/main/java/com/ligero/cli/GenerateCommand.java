@@ -21,15 +21,25 @@ import java.util.List;
  */
 final class GenerateCommand {
 
+    /** Generate typed controllers (annotated methods) instead of register(Ligero) lambdas. */
+    private boolean typed;
+
     int run(Path workingDir, List<String> args) throws IOException {
         if (args.size() < 2) {
             throw new IllegalArgumentException(
-                "Usage: ligero generate <module|controller|service|repository|resource> <Name> [--module <Name>]");
+                "Usage: ligero generate <module|controller|service|repository|resource> <Name> "
+                + "[--module <Name>] [--controllers lambda|typed]");
         }
         String kind = args.get(0);
         String name = Names.pascal(Names.requireIdentifier(args.get(1), kind));
         Project project = Project.locate(workingDir);
         String moduleOption = LigeroCli.option(args, "--module");
+        String controllers = LigeroCli.option(args, "--controllers");
+        if (controllers != null && !java.util.Set.of("lambda", "typed").contains(controllers)) {
+            throw new IllegalArgumentException("--controllers must be one of: lambda, typed");
+        }
+        // Default: follow the style the project already uses.
+        typed = controllers != null ? "typed".equals(controllers) : project.usesTypedControllers();
 
         switch (kind) {
             case "module" -> generateModule(project, name);
@@ -98,8 +108,9 @@ final class GenerateCommand {
                 name + "Service not found in module " + module.className()
                 + " — generate it first (ligero g service " + name + ") or use ligero g resource " + name);
         }
-        writeNew(dir.resolve(name + "Controller.java"),
-            Templates.controllerSkeleton(module.packageName(), name));
+        writeNew(dir.resolve(name + "Controller.java"), typed
+            ? Templates.controllerSkeletonTyped(module.packageName(), name)
+            : Templates.controllerSkeleton(module.packageName(), name));
         bind(module, name + "Controller", "new " + name + "Controller(b.get(" + name + "Service.class))");
         route(module, name);
     }
@@ -121,7 +132,9 @@ final class GenerateCommand {
         writeNew(dir.resolve("InMemory" + name + "Repository.java"), Templates.resourceInMemoryRepository(packageName, name));
         writeNew(dir.resolve(name + "Service.java"), Templates.resourceServiceInterface(packageName, name));
         writeNew(dir.resolve("Default" + name + "Service.java"), Templates.resourceDefaultService(packageName, name));
-        writeNew(dir.resolve(name + "Controller.java"), Templates.resourceController(packageName, name));
+        writeNew(dir.resolve(name + "Controller.java"), typed
+            ? Templates.resourceControllerTyped(packageName, name)
+            : Templates.resourceController(packageName, name));
 
         Project.ModuleRef module = new Project.ModuleRef(packageName, moduleClass, dir.resolve(moduleClass + ".java"));
         bind(module, name + "Repository", "new InMemory" + name + "Repository()");
@@ -140,10 +153,16 @@ final class GenerateCommand {
         System.out.println("  wired  " + type + " into " + module.className());
     }
 
-    /** Inserts a {@code beans.get(XController.class).register(app);} into the module's routes(). */
+    /**
+     * Mounts the controller's routes in the module's routes(): the generated
+     * {@code XControllerRoutes.mount(...)} for typed controllers, or the
+     * controller's own {@code register(app)} for the lambda style.
+     */
     private void route(Project.ModuleRef module, String name) throws IOException {
-        SourceEditor.insertBeforeAnchor(module.file(), SourceEditor.ROUTES_ANCHOR,
-            "beans.get(" + name + "Controller.class).register(app);");
+        String line = typed
+            ? name + "ControllerRoutes.mount(app, beans.get(" + name + "Controller.class));"
+            : "beans.get(" + name + "Controller.class).register(app);";
+        SourceEditor.insertBeforeAnchor(module.file(), SourceEditor.ROUTES_ANCHOR, line);
     }
 
     private void writeNew(Path file, String content) throws IOException {

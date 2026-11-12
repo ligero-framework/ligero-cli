@@ -66,7 +66,8 @@ public final class LigeroCli {
 
             Usage:
               ligero new <project-name> [--package <base.package>] [--db none|h2|postgres] [--wiring explicit|processor]
-              ligero generate <kind> <Name> [--module <Name>]
+                         [--controllers lambda|typed] [--devtools true|false]
+              ligero generate <kind> <Name> [--module <Name>] [--controllers lambda|typed]
               ligero add <module>                               (scheduler|cache|redis|resilience|auth|events|jdbc|mcp|query)
               ligero dev                                        (run + restart on file change)
 
@@ -75,6 +76,11 @@ public final class LigeroCli {
               processor  annotate classes; ligero-processor generates the bind(...) at compile time
               ligero version
               ligero help
+
+            Controllers (ligero new / ligero generate):
+              lambda     (default) routes registered by hand: app.get("/x", ctx -> ...)
+              typed      endpoints as annotated methods — @Get("/{id}") Product get(@PathParam long id) —
+                         checked by the compiler; needs a Ligero release with typed controllers
 
             Generators (each writes the file AND auto-registers it in its module):
               module <Name>       an empty feature module (registered in Application)

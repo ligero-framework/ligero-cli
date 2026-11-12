@@ -49,6 +49,21 @@ final class Project {
         return applicationFile;
     }
 
+    /**
+     * True when the project already declares typed controllers (annotated
+     * methods from {@code com.ligero.web}), so generators keep the same style.
+     */
+    boolean usesTypedControllers() throws IOException {
+        try (Stream<Path> paths = Files.walk(sourceRoot)) {
+            for (Path file : paths.filter(p -> p.getFileName().toString().endsWith("Controller.java")).toList()) {
+                if (Files.readString(file).contains("import com.ligero.web.")) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     /** Directory backing a package (created lazily by callers when writing). */
     Path packageDir(String packageName) {
         return sourceRoot.resolve(Path.of("", packageName.split("\\.")));
