@@ -6,7 +6,30 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+- **Installers verify what they download.** `install.sh` and `install.ps1`
+  check the binary against the SHA-256 published with the release
+  (`<asset>.sha256`, now attached by the release workflow), download to a
+  temporary file and only move it into place once verified — a truncated or
+  tampered download never becomes `ligero`. `LIGERO_REQUIRE_CHECKSUM=1` refuses
+  releases without a checksum; `LIGERO_VERSION` is validated; downloads are
+  HTTPS-only across redirects.
+- **Workflows**: version strings from `repository_dispatch` payloads, manual
+  inputs and tag names are passed through the environment and validated instead
+  of being substituted into shell scripts (script injection); the release
+  workflow defaults to read-only permissions, granting write per job.
+- Generated `docker-compose.yml` publishes the sample PostgreSQL port on
+  `127.0.0.1` only — it uses throwaway credentials and must not be reachable
+  from the network.
+
 ### Added
+- **`--controllers typed`** for `ligero new` and `ligero generate` — scaffold
+  controllers as typed, annotated methods (`@Get("/{id}") Order get(@PathParam
+  long id)`) instead of `register(Ligero)` lambdas. The module mounts the
+  generated `<Controller>Routes` class (explicit wiring) or the generated
+  module does (processor wiring), and `ligero-processor` is added to the build.
+  Generators follow the style a project already uses. `lambda` stays the
+  default until the pinned framework release includes typed controllers.
 - **`ligero add <module>`** — wire an optional module into the current project:
   adds the dependency (Groovy or Kotlin DSL, when the module isn't in
   `ligero-core`) and drops a starter `<Module>Config` in `<base>.config`.
@@ -15,6 +38,12 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   **`mcp`**, and **`query`** (the built-in HTTP method — prints usage). Idempotent.
 - `--devtools true|false` option for `ligero new` — the devtools workbench is
   scaffolded **on by default**; pass `--devtools false` to skip it.
+
+### Fixed
+- `ligero generate` rejects Java reserved words and `java.lang` type names
+  (`Class`, `Record`, `String`, ...) instead of generating code that cannot
+  compile.
+- `ligero dev` also watches directories created after it started.
 
 ### Changed
 - Generated projects now target **Ligero 0.7.0** (scheduler, cache, resilience,
