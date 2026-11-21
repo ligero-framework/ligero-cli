@@ -42,6 +42,7 @@ public final class LigeroCli {
                 case "generate", "g" -> new GenerateCommand().run(workingDir, rest(args));
                 case "add" -> new AddCommand().run(workingDir, rest(args));
                 case "dev" -> new DevCommand().run(workingDir, rest(args));
+                case "image" -> new ImageCommand().run(workingDir, rest(args));
                 default -> {
                     System.err.println("Unknown command: " + args[0] + "\n\n" + usage());
                     yield 1;
@@ -70,6 +71,8 @@ public final class LigeroCli {
               ligero generate <kind> <Name> [--module <Name>] [--controllers lambda|typed]
               ligero add <module>                               (scheduler|cache|redis|resilience|auth|events|jdbc|mcp|query)
               ligero dev                                        (run + restart on file change)
+              ligero image [--name <image>] [--tag <tag>] [--publish] [--sbom <dir>] [--builder <image>] [--dry-run]
+                                                                (container image with Cloud Native Buildpacks)
 
             Wiring (ligero new):
               explicit   (default) hand-written modules with bind(...); `ligero generate` weaves into them

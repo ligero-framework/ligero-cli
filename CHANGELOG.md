@@ -6,6 +6,13 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **`ligero image`** builds a container image with Cloud Native Buildpacks
+  (`pack` + Paketo Java buildpacks, Java 21, start-script distribution):
+  `--name`, `--tag`, `--publish`, `--sbom <dir>` to export the software bill of
+  materials, `--builder`, and `--dry-run` to print the command. Image names,
+  tags and builders are validated before anything runs.
+
 ### Security
 - **Installers verify what they download.** `install.sh` and `install.ps1`
   check the binary against the SHA-256 published with the release

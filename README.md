@@ -95,6 +95,23 @@ an `Application` with routes and middleware, and an end-to-end test using `liger
 > **Note:** the generated project resolves Ligero from `mavenLocal()` until the framework
 > is published to Maven Central — run `./gradlew publishToMavenLocal` in the framework repo first.
 
+### Container images
+
+`ligero image` builds an OCI image with [Cloud Native Buildpacks](https://buildpacks.io)
+(the `pack` CLI and the Paketo Java buildpacks): no Dockerfile to maintain, the
+JRE and OS layers are patched on every rebuild, and the image carries a software
+bill of materials.
+
+```bash
+ligero image                                              # <project>:latest
+ligero image --name registry.example.com/shop/api --tag 1.4.0 --publish
+ligero image --sbom build/sbom                            # also write the SBOM files
+ligero image --dry-run                                    # print the pack command
+```
+
+Without `pack`, the generated `Dockerfile` does the same job:
+`docker build -t my-api .`
+
 ## License
 
 Apache 2.0
