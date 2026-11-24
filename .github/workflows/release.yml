@@ -73,7 +73,7 @@ jobs:
           cat "$asset.sha256"
 
       - name: Attach to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             ligero-${{ matrix.label }}${{ matrix.ext }}
@@ -109,7 +109,7 @@ jobs:
         run: ./gradlew distZip -Pversion="$VERSION" --no-daemon
 
       - name: Attach zip + installers to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             build/distributions/*.zip
