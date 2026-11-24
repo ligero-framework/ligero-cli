@@ -313,6 +313,11 @@ class LigeroCliTest {
     }
 
     @Test
+    void versionComesFromTheBuild() {
+        assertThat(LigeroCli.VERSION).isEqualTo(System.getProperty("expected.version"));
+    }
+
+    @Test
     void versionAndHelpAndUnknown() {
         assertThat(LigeroCli.run(dir, "version")).isZero();
         assertThat(LigeroCli.run(dir, "help")).isZero();

@@ -6,6 +6,12 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-11-24
+
+### Fixed
+- `ligero version` printed `0.1.0` regardless of the release. The version is now
+  generated from the build, so it always matches the released artifact.
+
 ## [0.2.0] — 2026-11-24
 
 ### Changed

@@ -17,7 +17,7 @@ import java.util.List;
  */
 public final class LigeroCli {
 
-    static final String VERSION = "0.1.0";
+    static final String VERSION = BuildVersion.VALUE;
 
     public static void main(String[] args) {
         int exit = run(Path.of("."), args);
