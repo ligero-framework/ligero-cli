@@ -116,7 +116,7 @@ jobs:
 
       - name: Open the version-bump PR
         if: steps.next.outputs.skip != 'true'
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v8
         with:
           # `main` is protected (changes go through a PR + checks), so open a PR
           # instead of pushing. Use a RELEASE_BOT_TOKEN (PAT/App token) so the
