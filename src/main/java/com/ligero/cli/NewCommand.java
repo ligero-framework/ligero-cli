@@ -10,7 +10,7 @@ final class NewCommand {
 
     int run(Path workingDir, List<String> args) throws IOException {
         if (args.isEmpty() || args.get(0).startsWith("--")) {
-            throw new IllegalArgumentException("Usage: ligero new <project-name> [--package <base.package>] [--db none|h2|postgres] [--wiring explicit|processor] [--devtools true|false]");
+            throw new IllegalArgumentException("Usage: ligero new <project-name> [--package <base.package>] [--db none|h2|postgres] [--wiring explicit|processor] [--controllers lambda|typed] [--devtools true|false]");
         }
         String name = args.get(0);
         if (!name.matches("[a-zA-Z][a-zA-Z0-9_-]*")) {
@@ -31,6 +31,17 @@ final class NewCommand {
             throw new IllegalArgumentException("--wiring must be one of: explicit, processor");
         }
         boolean processor = "processor".equals(wiring);
+        // Controller style: `lambda` registers routes by hand in register(Ligero);
+        // `typed` declares endpoints as annotated methods (needs a Ligero release
+        // that ships com.ligero.web and the matching ligero-processor).
+        String controllers = LigeroCli.option(args, "--controllers");
+        if (controllers == null) {
+            controllers = "lambda";
+        }
+        if (!java.util.Set.of("lambda", "typed").contains(controllers)) {
+            throw new IllegalArgumentException("--controllers must be one of: lambda, typed");
+        }
+        boolean typed = "typed".equals(controllers);
         // Devtools are wired by default; opt out with `--devtools false`.
         String devtoolsOpt = LigeroCli.option(args, "--devtools");
         if (devtoolsOpt != null && !java.util.Set.of("true", "false").contains(devtoolsOpt)) {
@@ -54,7 +65,7 @@ final class NewCommand {
         Path greetingDir = packageDir.resolve("greeting");
 
         write(root.resolve("settings.gradle"), Templates.settingsGradle(name));
-        write(root.resolve("build.gradle"), Templates.buildGradle(basePackage, db, processor, devtools));
+        write(root.resolve("build.gradle"), Templates.buildGradle(basePackage, db, processor, devtools, typed));
         write(root.resolve(".gitignore"), Templates.gitignore());
         write(root.resolve("README.md"), Templates.projectReadme(name, db, processor, devtools));
         write(root.resolve("Dockerfile"), Templates.dockerfile(name));
@@ -68,7 +79,8 @@ final class NewCommand {
         write(root.resolve(greetingDir).resolve("GreetingRepository.java"), Templates.greetingRepository(basePackage));
         write(root.resolve(greetingDir).resolve("GreetingService.java"), Templates.greetingService(basePackage));
         write(root.resolve(greetingDir).resolve("DefaultGreetingService.java"), Templates.defaultGreetingService(basePackage));
-        write(root.resolve(greetingDir).resolve("GreetingController.java"), Templates.greetingController(basePackage));
+        write(root.resolve(greetingDir).resolve("GreetingController.java"),
+            typed ? Templates.greetingControllerTyped(basePackage) : Templates.greetingController(basePackage));
 
         if (processor) {
             // Processor mode: no hand-written module; annotate exactly one repository
@@ -83,7 +95,7 @@ final class NewCommand {
         } else {
             // Explicit mode: a GreetingModule owns the binds; both repo impls exist.
             write(root.resolve(packageDir).resolve("Application.java"), Templates.application(basePackage, db, devtools));
-            write(root.resolve(greetingDir).resolve("GreetingModule.java"), Templates.greetingModule(basePackage, db));
+            write(root.resolve(greetingDir).resolve("GreetingModule.java"), Templates.greetingModule(basePackage, db, typed));
             write(root.resolve(greetingDir).resolve("InMemoryGreetingRepository.java"), Templates.inMemoryGreetingRepository(basePackage));
             if (!"none".equals(db)) {
                 write(root.resolve(greetingDir).resolve("JdbcGreetingRepository.java"), Templates.jdbcGreetingRepository(basePackage));
@@ -108,14 +120,14 @@ final class NewCommand {
               ligero generate module Billing     # an empty feature module
             """;
         System.out.println("""
-            Created project '%s' (db: %s, wiring: %s, devtools: %s) — %s
+            Created project '%s' (db: %s, wiring: %s, controllers: %s, devtools: %s) — %s
 
             Next steps:
               cd %s
               gradle run                 # app on http://localhost:8080%s
               gradle test                # end-to-end test
               docker compose up --build  # containerized app%s
-            %s""".formatted(name, db, wiring, devtools, wiringNote, name,
+            %s""".formatted(name, db, wiring, controllers, devtools, wiringNote, name,
                 devtools ? ", devtools on /ligero/dev" : "",
                 "postgres".equals(db) ? " + PostgreSQL (try /api/greetings)" : "", addFeatures));
         return 0;

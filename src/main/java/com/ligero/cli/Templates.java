@@ -19,6 +19,11 @@ final class Templates {
     }
 
     static String buildGradle(String basePackage, String db, boolean processor, boolean devtools) {
+        return buildGradle(basePackage, db, processor, devtools, false);
+    }
+
+    static String buildGradle(String basePackage, String db, boolean processor, boolean devtools,
+                              boolean typedControllers) {
         String dbDependency = switch (db) {
             case "postgres" -> "    implementation 'org.postgresql:postgresql:42.7.4'\n";
             case "h2" -> "    implementation 'com.h2database:h2:2.3.232'\n";
@@ -26,7 +31,8 @@ final class Templates {
         };
         // Opt-in compile-time DI: generates the explicit bind() wiring from your
         // annotated classes. Remove this line to hand-write the wiring instead.
-        String processorDependency = processor
+        // Typed controllers need it as well: it generates their <Controller>Routes classes.
+        String processorDependency = processor || typedControllers
             ? "    annotationProcessor \"com.ligeroframework:ligero-processor:$ligeroVersion\"\n"
             : "";
         // Visual debugger at /ligero/dev — opt out with `--devtools false`.
@@ -379,6 +385,13 @@ final class Templates {
     // --------------------------------------------------- greeting module (new)
 
     static String greetingModule(String basePackage, String db) {
+        return greetingModule(basePackage, db, false);
+    }
+
+    static String greetingModule(String basePackage, String db, boolean typedControllers) {
+        String mountRoutes = typedControllers
+            ? "GreetingControllerRoutes.mount(app, beans.get(GreetingController.class));"
+            : "beans.get(GreetingController.class).register(app);";
         boolean hasDb = !"none".equals(db);
         String pkg = basePackage + ".greeting";
         String repoImpl = hasDb ? "JdbcGreetingRepository" : "InMemoryGreetingRepository";
@@ -421,11 +434,11 @@ final class Templates {
 
                 @Override
                 public void routes(Ligero app, Beans beans) {
-            %s        beans.get(GreetingController.class).register(app);
+            %s        %s
                     // ligero-cli:routes
                 }
             %s}
-            """.formatted(pkg, dbImports, dbBeanBinding, repoImpl, repoArg, healthRoute, dbHelpers);
+            """.formatted(pkg, dbImports, dbBeanBinding, repoImpl, repoArg, healthRoute, mountRoutes, dbHelpers);
     }
 
     private static final String POSTGRES_DATASOURCE = """
@@ -665,6 +678,61 @@ final class Templates {
             """.formatted(basePackage);
     }
 
+    /** Typed variant: endpoints are methods; ligero-processor generates GreetingControllerRoutes. */
+    static String greetingControllerTyped(String basePackage) {
+        return """
+            package %s.greeting;
+
+            import com.ligero.beans.stereotype.Controller;
+            import com.ligero.http.BadRequestException;
+            import com.ligero.web.Body;
+            import com.ligero.web.Get;
+            import com.ligero.web.PathParam;
+            import com.ligero.web.Post;
+            import com.ligero.web.Status;
+
+            import java.util.List;
+            import java.util.Map;
+
+            /**
+             * Web layer: translates HTTP to service calls; no business logic here.
+             * Each endpoint is a plain method — parameters in, return value out — and
+             * the routing code is generated at compile time (GreetingControllerRoutes).
+             */
+            @Controller
+            public class GreetingController {
+
+                public record NewGreeting(String message) {
+                }
+
+                private final GreetingService service;
+
+                public GreetingController(GreetingService service) {
+                    this.service = service;
+                }
+
+                @Get("/hello/{name}")
+                Map<String, String> hello(@PathParam String name) {
+                    return Map.of("hello", service.greet(name));
+                }
+
+                @Get("/api/greetings")
+                List<String> greetings() {
+                    return service.greetings();
+                }
+
+                @Post("/api/greetings")
+                @Status(201)
+                Map<String, String> add(@Body NewGreeting body) {
+                    if (body.message() == null || body.message().isBlank()) {
+                        throw new BadRequestException("message is required");
+                    }
+                    return Map.of("added", service.add(body.message()));
+                }
+            }
+            """.formatted(basePackage);
+    }
+
     // ------------------------------------------------ generic module (generate)
 
     static String emptyModule(String packageName, String moduleClass) {
@@ -804,6 +872,37 @@ final class Templates {
                 }
             }
             """.formatted(packageName, name, name, name, var, name, name, var, var, var, route, var);
+    }
+
+    static String controllerSkeletonTyped(String packageName, String name) {
+        String var = Names.camel(name);
+        String route = "/api/" + Names.packageSegment(name) + "s";
+        return """
+            package %s;
+
+            import com.ligero.beans.stereotype.Controller;
+            import com.ligero.web.Get;
+
+            import java.util.List;
+
+            /** Web layer for %s: HTTP in, service out. */
+            @Controller("%s")
+            public class %sController {
+
+                private final %sService %sService;
+
+                public %sController(%sService %sService) {
+                    this.%sService = %sService;
+                }
+
+                @Get
+                List<String> list() {
+                    return %sService.list();
+                }
+
+                // TODO: add @Post / @Put / @Delete methods
+            }
+            """.formatted(packageName, name, route, name, name, var, name, name, var, var, var, var);
     }
 
     // ------------------------------------------------------ resource (CRUD)
@@ -989,6 +1088,61 @@ final class Templates {
             """.formatted(packageName, name, name, name, name, name, route, name, name, name);
     }
 
+    static String resourceControllerTyped(String packageName, String name) {
+        String route = "/api/" + Names.packageSegment(name) + "s";
+        return """
+            package %s;
+
+            import com.ligero.beans.stereotype.Controller;
+            import com.ligero.http.BadRequestException;
+            import com.ligero.http.Response;
+            import com.ligero.web.Body;
+            import com.ligero.web.Delete;
+            import com.ligero.web.Get;
+            import com.ligero.web.PathParam;
+            import com.ligero.web.Post;
+
+            import java.util.List;
+
+            @Controller("%s")
+            public class %sController {
+
+                public record Create%sRequest(String name) {
+                }
+
+                private final %sService service;
+
+                public %sController(%sService service) {
+                    this.service = service;
+                }
+
+                @Get
+                List<%s> list() {
+                    return service.list();
+                }
+
+                @Get("/{id}")
+                %s get(@PathParam long id) {
+                    return service.get(id);
+                }
+
+                @Post
+                Response<%s> create(@Body Create%sRequest body) {
+                    if (body.name() == null || body.name().isBlank()) {
+                        throw new BadRequestException("name is required");
+                    }
+                    %s created = service.create(body.name());
+                    return Response.created("%s/" + created.id(), created);
+                }
+
+                @Delete("/{id}")
+                void delete(@PathParam long id) {
+                    service.delete(id);
+                }
+            }
+            """.formatted(packageName, route, name, name, name, name, name, name, name, name, name, name, route);
+    }
+
     // ----------------------------------------------------------- docker etc.
 
     static String dockerfile(String name) {
@@ -1034,7 +1188,8 @@ final class Templates {
                   POSTGRES_USER: app
                   POSTGRES_PASSWORD: app
                 ports:
-                  - "5432:5432"
+                  # loopback only: the sample credentials must not be reachable from the network
+                  - "127.0.0.1:5432:5432"
                 volumes:
                   - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
                 healthcheck:
