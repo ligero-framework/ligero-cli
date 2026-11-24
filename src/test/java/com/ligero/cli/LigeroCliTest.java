@@ -241,7 +241,7 @@ class LigeroCliTest {
         assertThat(LigeroCli.run(project, "add", "mcp")).isZero();
 
         assertThat(Files.readString(project.resolve("build.gradle")))
-            .contains("implementation 'com.ligeroframework:ligero-mcp:0.7.0'");
+            .contains("implementation 'com.ligeroframework:ligero-mcp:0.8.0'");
         assertThat(Files.readString(project.resolve("src/main/java/com/acme/app/config/McpConfig.java")))
             .contains("import com.ligero.mcp.McpServer;")
             .contains("McpServer.create(\"app\"")
@@ -278,7 +278,7 @@ class LigeroCliTest {
         Path project = newProject();
         assertThat(LigeroCli.run(project, "add", "scheduler")).isZero();
         assertThat(Files.readString(project.resolve("build.gradle")))
-            .contains("implementation 'com.ligeroframework:ligero-scheduler:0.7.0'");
+            .contains("implementation 'com.ligeroframework:ligero-scheduler:0.8.0'");
         assertThat(Files.readString(project.resolve("src/main/java/com/acme/app/config/SchedulerConfig.java")))
             .contains("import com.ligero.scheduler.Scheduler;")
             .contains("fixedRate");
@@ -299,7 +299,7 @@ class LigeroCliTest {
         Path project = newProject();
         assertThat(LigeroCli.run(project, "add", "jdbc", "--pool")).isZero();
         assertThat(Files.readString(project.resolve("build.gradle")))
-            .contains("implementation 'com.ligeroframework:ligero-jdbc:0.7.0'");
+            .contains("implementation 'com.ligeroframework:ligero-jdbc:0.8.0'");
         assertThat(Files.readString(project.resolve("src/main/java/com/acme/app/config/DatabaseConfig.java")))
             .contains("DataSources.pooled")
             .contains("HikariDataSource");
